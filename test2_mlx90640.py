@@ -19,11 +19,18 @@ Dobór bibliotek:
                   niż matplotlib, więc strumień jest płynniejszy.
     * serwer MJPEG z biblioteki standardowej — bez okien/pulpitu (headless OK).
 
-WAŻNE (płynność / I2C):
-    MLX90640 przy wyższych odświeżaniach potrzebuje SZYBKIEJ magistrali I2C.
-    W pliku /boot/firmware/config.txt (Bookworm) lub /boot/config.txt (Bullseye)
-    ustaw:  dtparam=i2c_arm_baudrate=1000000   i zrestartuj malinkę.
-    Tutaj prosimy o I2C = 800 kHz, co dla RPi 3B jest dobrym kompromisem.
+WAŻNE (płynność / I2C) — przeczytaj, jeśli masz błąd "[Errno 5] I/O error":
+    MLX90640 potrzebuje SZYBKIEJ magistrali I2C. Na Raspberry Pi prawdziwa
+    prędkość I2C NIE jest ustawiana w kodzie (parametr `frequency` w busio jest
+    tu IGNOROWANY), lecz w pliku konfiguracyjnym rozruchu:
+        /boot/firmware/config.txt (Bookworm) lub /boot/config.txt (Bullseye)
+    Dodaj linię i ZRESTARTUJ malinkę (sudo reboot):
+        dtparam=i2c_arm_baudrate=1000000      # 1 MHz (zalecane)
+    Jeśli przy 1 MHz nadal sypie błędami I/O, spróbuj wolniej i stabilniej:
+        dtparam=i2c_arm_baudrate=400000       # 400 kHz
+    Sprawdź też pewność połączeń SDA/SCL (krótkie przewody) — luźny styk = Errno 5.
+
+    Uwaga: pojedyncze błędy odczytu są normalne; skrypt je łapie i próbuje dalej.
 
 Pinout (zgodnie z Twoim podłączeniem):
     SDA = Pin 3 (GPIO 2),  SCL = Pin 5 (GPIO 3)
@@ -147,17 +154,31 @@ def watek_czujnika(mlx, wyjscie):
     licznik = 0
     czas_start = time.monotonic()
     fps = 0.0
+    bledy_z_rzedu = 0   # licznik kolejnych błędów I2C (do diagnostyki)
 
     while True:
         try:
             # Odczyt 768 wartości temperatury (w stopniach Celsjusza)
             mlx.getFrame(surowa_klatka)
+            bledy_z_rzedu = 0
         except ValueError:
-            # Sporadyczne błędy I2C/CRC są normalne — po prostu pomijamy klatkę
+            # Błędy CRC / "dane jeszcze niegotowe" są NORMALNE — pomijamy klatkę
             continue
-        except RuntimeError as e:
-            logging.warning("Błąd odczytu MLX90640: %s", e)
-            time.sleep(0.05)
+        except (OSError, RuntimeError) as e:
+            # [Errno 5] Input/output error itp. — typowy chwilowy błąd magistrali
+            # I2C na Raspberry Pi. NIE przerywamy wątku, tylko próbujemy dalej.
+            bledy_z_rzedu += 1
+            if bledy_z_rzedu <= 3 or bledy_z_rzedu % 30 == 0:
+                logging.warning(
+                    "Błąd I2C przy odczycie MLX90640 (%d z rzędu): %s",
+                    bledy_z_rzedu, e)
+            # Po serii błędów spróbuj „odświeżyć” konfigurację czujnika
+            if bledy_z_rzedu % 30 == 0:
+                try:
+                    mlx.refresh_rate = ODSWIEZANIE
+                except Exception:
+                    pass
+            time.sleep(0.1)
             continue
 
         # 1. Z listy do macierzy 24x32
@@ -221,6 +242,8 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # 1. Inicjalizacja I2C i czujnika
+    # Uwaga: na RPi argument `frequency` jest ignorowany — realną prędkość I2C
+    # ustawia się w config.txt (patrz nagłówek pliku: dtparam=i2c_arm_baudrate).
     print("Inicjalizacja magistrali I2C i czujnika MLX90640...")
     i2c = busio.I2C(board.SCL, board.SDA, frequency=CZESTOTLIWOSC_I2C)
     mlx = adafruit_mlx90640.MLX90640(i2c)

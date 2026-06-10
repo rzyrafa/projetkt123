@@ -141,6 +141,15 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
 - **Termowizja „zacina się” / niskie FPS** — upewnij się, że ustawiłeś
   `dtparam=i2c_arm_baudrate=1000000` i zrestartowałeś. Możesz też zmniejszyć
   `ODSWIEZANIE` w `test2_mlx90640.py`.
+- **`OSError: [Errno 5] Input/output error` w Teście 2** — to błąd magistrali
+  I2C (znany problem MLX90640 na RPi). Skrypt łapie pojedyncze takie błędy i
+  próbuje dalej, ale jeśli sypią się non‑stop:
+  1. Dodaj do `config.txt` prędkość I2C i **zrestartuj**:
+     `dtparam=i2c_arm_baudrate=1000000` (a jeśli wciąż błędy — spróbuj `400000`).
+     Na Pi prędkość ustawia się TYLKO tutaj, nie w kodzie.
+  2. Sprawdź połączenia SDA (Pin 3) / SCL (Pin 5) — krótkie, pewne przewody;
+     luźny styk to najczęstsza przyczyna Errno 5.
+  3. Potwierdź, że czujnik jest widoczny: `i2cdetect -y 1` → adres `0x33`.
 - **Ekran biały/szumy** — zmniejsz `BAUDRATE` w `test3_tft_lcd.py`
   (np. do `24000000`), sprawdź piny DC/RESET/CS.
 - **Obraz termowizji odwrócony** — zmień `np.fliplr` / dodaj `np.flipud`
