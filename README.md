@@ -141,6 +141,43 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
 
 ---
 
+## Program główny — fuzja RGB + termowizja na ekranie (`kamera_termowizyjna.py`)
+
+Gdy wszystkie 3 testy działają, ten skrypt spina je w całość: czyta obraz z
+kamery RGB i temperatury z MLX90640, **nakłada mapę cieplną na obraz RGB (fuzja)**
+i wyświetla wynik na ekranie **ST7789**. Opcjonalnie udostępnia ten sam obraz w
+przeglądarce (MJPEG).
+
+```bash
+source venv/bin/activate
+python3 kamera_termowizyjna.py            # start w trybie "fuzja"
+python3 kamera_termowizyjna.py gorace      # start w trybie "gorące punkty"
+```
+
+**Tryby obrazu** (przełączasz na żywo klawiszami w terminalu SSH):
+- `1` — tylko kamera RGB,
+- `2` — tylko mapa cieplna,
+- `3` — **fuzja** (półprzezroczyste nałożenie termowizji na RGB),
+- `4` — **gorące punkty** (RGB, a ciepło widoczne tylko tam, gdzie gorąco).
+
+Dodatkowo: `+` / `-` reguluje przezroczystość nałożenia, `q` kończy program.
+
+Podgląd w przeglądarce (gdy `WEB_PODGLAD = True`): `http://<IP_MALINKI>:8080/`.
+
+**Strojenie** (góra pliku `kamera_termowizyjna.py`):
+- `ALFA` — siła nałożenia termowizji w trybie fuzji,
+- `PROG_GORACE` — próg [°C] dla trybu „gorące punkty”,
+- `TERMO_LUSTRO_X` / `TERMO_LUSTRO_Y` — dopasowanie orientacji termowizji do kamery,
+- `INWERSJA` / `ZAMIEN_RB` — korekta kolorów ekranu (jak w Teście 3),
+- `WEB_PODGLAD` — włącz/wyłącz podgląd w przeglądarce.
+
+> Uwaga o dopasowaniu obrazów: kamera RGB i MLX90640 mają inne pole widzenia i są
+> fizycznie przesunięte, więc nałożenie jest przybliżone. Dla idealnego pokrycia
+> trzeba by skalibrować przesunięcie/skalę termowizji względem RGB — w razie
+> potrzeby można to dodać.
+
+---
+
 ## Najczęstsze problemy
 
 - **MLX90640 niewidoczny w `i2cdetect`** — sprawdź podłączenie SDA/SCL i czy
