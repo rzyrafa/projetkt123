@@ -140,8 +140,12 @@ class ObslugaZadan(server.BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(klatka)
                     self.wfile.write(b'\r\n')
+            except (BrokenPipeError, ConnectionResetError):
+                # NORMALNE: przeglądarka zamknęła kartę / odświeżyła stronę.
+                # To nie jest błąd — po prostu kończymy obsługę tego klienta.
+                logging.debug('Klient %s zamknął połączenie.', self.client_address)
             except Exception as e:
-                logging.info('Klient %s rozłączony: %s', self.client_address, str(e))
+                logging.debug('Klient %s rozłączony: %s', self.client_address, str(e))
         else:
             self.send_error(404)
             self.end_headers()
