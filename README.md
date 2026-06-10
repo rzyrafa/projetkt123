@@ -76,8 +76,9 @@ echo "dtparam=i2c_arm_baudrate=1000000" | sudo tee -a /boot/firmware/config.txt
 
 # 4. Pakiety systemowe (picamera2 i OpenCV najlepiej z APT)
 sudo apt install -y python3-pip python3-venv python3-picamera2 \
-    python3-opencv python3-numpy python3-pil python3-libgpiod \
-    i2c-tools libatlas-base-dev
+    python3-opencv python3-numpy python3-pil python3-libgpiod i2c-tools
+# (opcjonalnie, przyspiesza numpy — pomiń, jeśli "no installation candidate")
+sudo apt install -y libatlas3-base || true
 
 # 5. Środowisko wirtualne z dostępem do pakietów systemowych
 python3 -m venv --system-site-packages venv
@@ -146,3 +147,6 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
   w `test2_mlx90640.py`.
 - **`externally-managed-environment` przy pip** — instaluj zawsze wewnątrz
   `venv` (jak wyżej); nie używaj `sudo pip`.
+- **`Package 'libatlas-base-dev' has no installation candidate`** — to tylko
+  opcjonalny pakiet przyspieszający numpy. Zaktualizowany `install.sh` pomija go
+  automatycznie. Ręcznie możesz po prostu kontynuować — testy działają bez niego.

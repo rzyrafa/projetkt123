@@ -42,6 +42,7 @@ else
 fi
 
 echo ">>> [4/6] Instalacja pakietów systemowych (APT)..."
+# Pakiety wymagane (bez nich testy nie ruszą):
 sudo apt install -y \
     python3-pip \
     python3-venv \
@@ -50,8 +51,15 @@ sudo apt install -y \
     python3-numpy \
     python3-pil \
     python3-libgpiod \
-    i2c-tools \
-    libatlas-base-dev
+    i2c-tools
+
+# Pakiet opcjonalny: libatlas (przyspiesza numpy). W nowszych wydaniach RPi OS
+# bywa niedostępny ("no installation candidate") — wtedy go po prostu pomijamy,
+# bo numpy i tak instalujemy z APT. Dlatego instalujemy go osobno z "|| true".
+echo ">>> (opcjonalnie) Próba instalacji biblioteki libatlas (przyspiesza numpy)..."
+sudo apt install -y libatlas3-base 2>/dev/null \
+    || sudo apt install -y libatlas-base-dev 2>/dev/null \
+    || echo "    libatlas niedostępny w tym wydaniu — pomijam (nie jest wymagany)."
 
 echo ">>> [5/6] Tworzenie środowiska wirtualnego (z dostępem do pakietów systemowych)..."
 # --system-site-packages pozwala venv widzieć picamera2 i OpenCV z APT
