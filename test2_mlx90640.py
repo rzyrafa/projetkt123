@@ -59,9 +59,14 @@ PORT = 8001                       # inny port niż Test 1, by móc działać ró
 ROZMIAR_PODGLADU = (640, 480)     # docelowy rozmiar obrazu w przeglądarce (4:3)
 PALETA = cv2.COLORMAP_INFERNO     # paleta cieplna (INFERNO/JET/HOT/TURBO...)
 JAKOSC_JPEG = 80                  # jakość kodowania JPEG
-CZESTOTLIWOSC_I2C = 800000        # 800 kHz na magistrali I2C
-# Odświeżanie czujnika: 8 Hz to dobry, stabilny wybór dla RPi 3B.
-ODSWIEZANIE = adafruit_mlx90640.RefreshRate.REFRESH_8_HZ
+CZESTOTLIWOSC_I2C = 800000        # (ignorowane na RPi — prędkość ustawia config.txt)
+# Odświeżanie czujnika. UWAGA: to częstotliwość POJEDYNCZEJ PODSTRONY, a pełna
+# klatka składa się z DWÓCH podstron — więc realne FPS ≈ ODSWIEZANIE / 2.
+#   REFRESH_8_HZ  -> ~4 kl./s   (wymaga I2C >= 400 kHz)
+#   REFRESH_16_HZ -> ~8 kl./s   (wymaga I2C = 1 MHz, dtparam=i2c_arm_baudrate=1000000)
+#   REFRESH_32_HZ -> ~16 kl./s  (agresywne; może sypać błędami I/O na RPi 3B)
+# Jeśli przy 16 Hz dostajesz dużo "[Errno 5]", zejdź na REFRESH_8_HZ.
+ODSWIEZANIE = adafruit_mlx90640.RefreshRate.REFRESH_16_HZ
 
 # Wymiary natywne matrycy MLX90640
 SZER_CZUJNIKA = 32

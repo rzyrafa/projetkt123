@@ -138,9 +138,14 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
 
 - **MLX90640 niewidoczny w `i2cdetect`** — sprawdź podłączenie SDA/SCL i czy
   wykonałeś restart po włączeniu I2C.
-- **Termowizja „zacina się” / niskie FPS** — upewnij się, że ustawiłeś
-  `dtparam=i2c_arm_baudrate=1000000` i zrestartowałeś. Możesz też zmniejszyć
-  `ODSWIEZANIE` w `test2_mlx90640.py`.
+- **Termowizja ma niskie FPS (np. ~1 fps)** — to prawie zawsze za wolne I2C.
+  Pełna klatka MLX90640 składa się z DWÓCH podstron, więc realne FPS ≈
+  `ODSWIEZANIE / 2`. Aby przyspieszyć:
+  1. Ustaw `dtparam=i2c_arm_baudrate=1000000` w `config.txt` i **zrestartuj**
+     (bez tego, na 100 kHz, dostaniesz ~1 fps).
+  2. W `test2_mlx90640.py` ustaw `ODSWIEZANIE = ...REFRESH_16_HZ` (≈8 fps).
+     Jeśli pojawią się błędy I/O — wróć do `REFRESH_8_HZ` (≈4 fps).
+  MLX90640 fizycznie nie robi „60 fps" — to czujnik wolny z natury.
 - **`OSError: [Errno 5] Input/output error` w Teście 2** — to błąd magistrali
   I2C (znany problem MLX90640 na RPi). Skrypt łapie pojedyncze takie błędy i
   próbuje dalej, ale jeśli sypią się non‑stop:
