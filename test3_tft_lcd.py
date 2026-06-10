@@ -43,10 +43,14 @@ from PIL import Image, ImageDraw
 from adafruit_rgb_display import ili9341
 
 # --- KONFIGURACJA -----------------------------------------------------------
-# Taktowanie SPI. ILI9341 zwykle pewnie działa do ~24-32 MHz.
-# Jeśli zobaczysz artefakty/szumy, zmniejsz; jeśli jest stabilnie, możesz podnieść.
-BAUDRATE = 32000000
-ROTACJA = 90          # 90/270 = orientacja pozioma (320 szer. x 240 wys.)
+# Taktowanie SPI. To NAJCZĘSTSZA przyczyna szumu/„śniegu” (zwłaszcza na dole
+# ekranu) przy połączeniu przewodami dupont. Jeśli widzisz szum:
+#   - zmniejsz tę wartość: 24 MHz -> 16 MHz -> 12 MHz,
+#   - skróć przewody SPI (MOSI/SCK), najlepiej kilka cm.
+# Jeśli obraz jest idealny, możesz spróbować podnieść z powrotem do 32 MHz.
+BAUDRATE = 24000000
+ROTACJA = 90          # 0/180 = pionowo (240x320), 90/270 = poziomo (320x240).
+                      # Jeśli obraz jest „przesunięty”, przetestuj 0/90/180/270.
 
 
 def main():
@@ -81,6 +85,11 @@ def main():
     print(f" Rozmiar roboczy: {szer} x {wys}, SPI: {BAUDRATE/1_000_000:.0f} MHz")
     print(" Zatrzymanie: Ctrl + C")
     print("=" * 60)
+
+    # Jednorazowe wyczyszczenie CAŁEJ pamięci ekranu na czarno. Dzięki temu,
+    # gdyby kontroler miał drobny offset/nadwyżkę pikseli, niezapisany obszar
+    # będzie czarny zamiast pokazywać losowy „śnieg”.
+    disp.fill(0)
 
     # 4. Bufor klatki w pamięci (rysujemy tu, potem wysyłamy całość)
     obraz = Image.new("RGB", (szer, wys))

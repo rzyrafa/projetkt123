@@ -157,6 +157,12 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
   3. Potwierdź, że czujnik jest widoczny: `i2cdetect -y 1` → adres `0x33`.
 - **Ekran biały/szumy** — zmniejsz `BAUDRATE` w `test3_tft_lcd.py`
   (np. do `24000000`), sprawdź piny DC/RESET/CS.
+- **Szum/„śnieg” na dole ekranu (Test 3) lub obraz lekko poza ekranem** —
+  to najczęściej za wysoki zegar SPI przy przewodach dupont (końcówka transmisji
+  klatki = dolna część ekranu się rozsypuje). Zmniejszaj `BAUDRATE`:
+  `24000000` → `16000000` → `12000000` i skróć przewody MOSI/SCK.
+  Skrypt dodatkowo czyści cały ekran na czarno przy starcie. Jeśli obraz jest
+  „przesunięty”, przetestuj różne wartości `ROTACJA` (0/90/180/270).
 - **Obraz termowizji odwrócony** — zmień `np.fliplr` / dodaj `np.flipud`
   w `test2_mlx90640.py`.
 - **Poziome paski na termowizji** — to rozjeżdżanie się dwóch „podstron”
