@@ -125,10 +125,17 @@ Otwórz na laptopie: `http://<IP_MALINKI>:8001/`
 
 ### Test 3 — Ekran TFT LCD
 ```bash
-python3 test3_tft_lcd.py
+python3 test3_tft_lcd.py              # animacja (test płynności)
+python3 test3_tft_lcd.py kalibracja   # plansza diagnostyczna (gdy obraz nie pasuje)
 ```
 Animowana, tęczowa fala pojawi się na ekranie; w terminalu i na ekranie
 zobaczysz licznik **FPS**. Zatrzymanie: `Ctrl + C`.
+
+Jeśli część ekranu się nie rysuje (np. „pasek śniegu” na dole) — uruchom tryb
+`kalibracja`. Narysuje białą ramkę po obrysie i pasy R/G/B, dzięki czemu
+zobaczysz dokładnie adresowany obszar i kolejność kolorów. Następnie dostrój
+w `test3_tft_lcd.py`: `STEROWNIK` (`ili9341`/`st7789`), `SZER_PANELU`/
+`WYS_PANELU` oraz `X_OFFSET`/`Y_OFFSET`.
 
 Adres IP malinki sprawdzisz poleceniem `hostname -I`.
 
@@ -157,12 +164,15 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
   3. Potwierdź, że czujnik jest widoczny: `i2cdetect -y 1` → adres `0x33`.
 - **Ekran biały/szumy** — zmniejsz `BAUDRATE` w `test3_tft_lcd.py`
   (np. do `24000000`), sprawdź piny DC/RESET/CS.
-- **Szum/„śnieg” na dole ekranu (Test 3) lub obraz lekko poza ekranem** —
-  to najczęściej za wysoki zegar SPI przy przewodach dupont (końcówka transmisji
-  klatki = dolna część ekranu się rozsypuje). Zmniejszaj `BAUDRATE`:
-  `24000000` → `16000000` → `12000000` i skróć przewody MOSI/SCK.
-  Skrypt dodatkowo czyści cały ekran na czarno przy starcie. Jeśli obraz jest
-  „przesunięty”, przetestuj różne wartości `ROTACJA` (0/90/180/270).
+- **Szum/„śnieg” na dole ekranu (Test 3) lub obraz lekko poza ekranem:**
+  1. Jeśli szum jest w CAŁYM obrazie i reaguje na zegar SPI — zmniejsz
+     `BAUDRATE` (`24000000`→`16000000`→`12000000`) i skróć przewody MOSI/SCK.
+  2. Jeśli pasek śniegu jest TYLKO na dole i NIE reaguje ani na zegar, ani na
+     rotację — to nie jest problem SPI, tylko rozmiar/offset/sterownik. Uruchom
+     `python3 test3_tft_lcd.py kalibracja`, a potem w pliku dostrój:
+     - `STEROWNIK = "st7789"` (wiele „240x320” to w rzeczywistości ST7789),
+     - `SZER_PANELU` / `WYS_PANELU` (rzeczywisty rozmiar panelu),
+     - `X_OFFSET` / `Y_OFFSET` (przesunięcie pamięci; działa dla ST7789).
 - **Obraz termowizji odwrócony** — zmień `np.fliplr` / dodaj `np.flipud`
   w `test2_mlx90640.py`.
 - **Poziome paski na termowizji** — to rozjeżdżanie się dwóch „podstron”

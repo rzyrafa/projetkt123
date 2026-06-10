@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TEST 3 — EKRAN TFT LCD (SPI, ILI9341 240x320) — TEST PŁYNNOŚCI
-==============================================================
+TEST 3 — EKRAN TFT LCD (SPI, 240x320) — TEST PŁYNNOŚCI + KALIBRACJA
+==================================================================
 
 Cel:
     Uruchomić wyświetlacz przez SPI i rysować zaawansowaną, animowaną falę
     (suma kilku sinusoid o zmiennej amplitudzie i fazie) z tęczowym kolorem,
-    aby sprawdzić, czy odświeżanie SPI jest szybkie i płynne. Na ekranie
-    pokazujemy też licznik FPS.
+    aby sprawdzić, czy odświeżanie SPI jest szybkie i płynne (z licznikiem FPS).
+
+    Skrypt ma też TRYB KALIBRACJI (patrz niżej), który pomaga ustalić, dlaczego
+    część ekranu może nie być rysowana (np. „pasek śniegu” na dole).
 
 Dobór bibliotek:
-    * `adafruit-circuitpython-rgb-display` — szybki sterownik m.in. ILI9341
-      z obsługą SPRZĘTOWEGO SPI (wysokie taktowanie = duża płynność).
-    * `Pillow (PIL)` — rysujemy całą klatkę w pamięci (Image/ImageDraw),
-      a potem jednym wywołaniem `disp.image()` wysyłamy ją do ekranu.
+    * `adafruit-circuitpython-rgb-display` — szybki sterownik (ILI9341 / ST7789)
+      ze sprzętowym SPI.
+    * `Pillow (PIL)` — rysujemy całą klatkę w pamięci i wysyłamy „hurtem”.
     * `adafruit-blinka` — udostępnia `board`, `digitalio`, `busio` na RPi.
-
-    Rysowanie całej klatki w buforze PIL i wysyłka "hurtem" to najszybsza
-    i najpłynniejsza metoda dla tych wyświetlaczy (brak migotania).
 
 Pinout (zgodnie z Twoim podłączeniem):
     CS    = Pin 24 (GPIO 8  / SPI CE0)
@@ -29,10 +27,21 @@ Pinout (zgodnie z Twoim podłączeniem):
     MISO  = Pin 21 (GPIO 9)   -> sprzętowe SPI0 (dla ekranu zwykle nieużywane)
 
 Uruchomienie:
-    python3 test3_tft_lcd.py
+    python3 test3_tft_lcd.py              # animacja (test płynności)
+    python3 test3_tft_lcd.py kalibracja   # statyczna plansza diagnostyczna
     (zatrzymanie: Ctrl + C)
+
+DIAGNOZA „PASKA ŚNIEGU” NA DOLE / OBRAZU POZA EKRANEM:
+    Taki pasek to obszar pamięci ekranu, do którego nigdy nie piszemy — znaczy,
+    że FIZYCZNY panel jest większy niż adresowany obszar sterownika, albo trzeba
+    podać OFFSET. Uruchom `kalibracja` i sprawdź na planszy:
+      * Czy biała RAMKA dotyka wszystkich 4 krawędzi szkła?
+      * Czy kolory pasów to kolejno CZERWONY / ZIELONY / NIEBIESKI?
+      * Gdzie dokładnie zaczyna się „śnieg”?
+    Następnie dostrój poniżej: STEROWNIK, SZER_PANELU/WYS_PANELU oraz X/Y_OFFSET.
 """
 
+import sys
 import math
 import time
 import colorsys
@@ -40,70 +49,134 @@ import colorsys
 import board
 import digitalio
 from PIL import Image, ImageDraw
-from adafruit_rgb_display import ili9341
+from adafruit_rgb_display import ili9341, st7789
 
-# --- KONFIGURACJA -----------------------------------------------------------
-# Taktowanie SPI. To NAJCZĘSTSZA przyczyna szumu/„śniegu” (zwłaszcza na dole
-# ekranu) przy połączeniu przewodami dupont. Jeśli widzisz szum:
-#   - zmniejsz tę wartość: 24 MHz -> 16 MHz -> 12 MHz,
-#   - skróć przewody SPI (MOSI/SCK), najlepiej kilka cm.
-# Jeśli obraz jest idealny, możesz spróbować podnieść z powrotem do 32 MHz.
+# --- KONFIGURACJA SPRZĘTU ---------------------------------------------------
+# Wybór sterownika. Wiele tanich modułów „240x320” to NIE ILI9341, lecz ST7789
+# (wtedy często pojawia się pasek/offset, jeśli użyjemy złego sterownika).
+#   "ili9341" — klasyczny ILI9341 (240x320)
+#   "st7789"  — ST7789 (240x320) — spróbuj, jeśli ILI9341 zostawia pasek
+STEROWNIK = "ili9341"
+
+# Rozmiar PANELU (w orientacji pionowej, natywnej). Dla większości modułów
+# 2.0–2.8" to 240 x 320. Jeśli kalibracja pokaże, że panel jest większy/mniejszy,
+# zmień te wartości.
+SZER_PANELU = 240
+WYS_PANELU = 320
+
+# Offsety pamięci (w pikselach). Dla czystego ILI9341 zwykle 0/0. Dla ST7789 i
+# klonów bywa potrzebne przesunięcie (np. 0/0, 0/80, 0/20). Jeśli obraz jest
+# „przesunięty”, a na przeciwległej krawędzi widać śnieg — dobierz tutaj.
+X_OFFSET = 0
+Y_OFFSET = 0
+
+# Taktowanie SPI. Jeśli widzisz losowy szum w CAŁYM obrazie — zmniejszaj:
+# 24 -> 16 -> 12 MHz i skróć przewody MOSI/SCK. (Uwaga: szum tylko na dole,
+# niezależny od baudrate i rotacji, to NIE jest problem SPI — to rozmiar/offset.)
 BAUDRATE = 24000000
-ROTACJA = 90          # 0/180 = pionowo (240x320), 90/270 = poziomo (320x240).
-                      # Jeśli obraz jest „przesunięty”, przetestuj 0/90/180/270.
+
+ROTACJA = 90          # 0/180 = pionowo, 90/270 = poziomo.
 
 
-def main():
-    # 1. Konfiguracja pinów sterujących (Blinka)
-    cs_pin = digitalio.DigitalInOut(board.CE0)   # CS  = GPIO8  / SPI CE0
-    dc_pin = digitalio.DigitalInOut(board.D24)   # DC  = GPIO24
+def zbuduj_wyswietlacz():
+    """Tworzy obiekt wyświetlacza wg ustawień i zwraca (disp, szer, wys)."""
+    cs_pin = digitalio.DigitalInOut(board.CE0)     # CS  = GPIO8  / SPI CE0
+    dc_pin = digitalio.DigitalInOut(board.D24)     # DC  = GPIO24
     reset_pin = digitalio.DigitalInOut(board.D25)  # RST = GPIO25
+    spi = board.SPI()                              # MOSI=GPIO10, SCK=GPIO11
 
-    # 2. Sprzętowe SPI0 (MOSI=GPIO10, MISO=GPIO9, SCK=GPIO11)
-    spi = board.SPI()
-
-    # 3. Inicjalizacja wyświetlacza ILI9341 (natywnie 240x320)
-    disp = ili9341.ILI9341(
-        spi,
+    wspolne = dict(
         rotation=ROTACJA,
         cs=cs_pin,
         dc=dc_pin,
         rst=reset_pin,
         baudrate=BAUDRATE,
+        width=SZER_PANELU,
+        height=WYS_PANELU,
     )
 
-    # Przy rotacji 90/270 zamieniamy szerokość z wysokością
-    if disp.rotation % 180 == 90:
-        szer = disp.height
-        wys = disp.width
+    if STEROWNIK == "st7789":
+        # ST7789 obsługuje offsety pamięci (przydatne dla klonów)
+        disp = st7789.ST7789(spi, x_offset=X_OFFSET, y_offset=Y_OFFSET, **wspolne)
     else:
-        szer = disp.width
-        wys = disp.height
+        # ILI9341 NIE przyjmuje x_offset/y_offset — używa stałego mapowania
+        disp = ili9341.ILI9341(spi, **wspolne)
+
+    # Wymiary „robocze” obrazu (po uwzględnieniu rotacji)
+    if disp.rotation % 180 == 90:
+        szer, wys = disp.height, disp.width
+    else:
+        szer, wys = disp.width, disp.height
 
     print("=" * 60)
-    print(" Ekran ILI9341 zainicjalizowany.")
-    print(f" Rozmiar roboczy: {szer} x {wys}, SPI: {BAUDRATE/1_000_000:.0f} MHz")
-    print(" Zatrzymanie: Ctrl + C")
+    print(f" Sterownik: {STEROWNIK}, panel {SZER_PANELU}x{WYS_PANELU}, "
+          f"offset {X_OFFSET}/{Y_OFFSET}")
+    print(f" Rozmiar roboczy: {szer} x {wys}, rotacja {ROTACJA}, "
+          f"SPI: {BAUDRATE/1_000_000:.0f} MHz")
     print("=" * 60)
+    return disp, szer, wys
 
-    # Jednorazowe wyczyszczenie CAŁEJ pamięci ekranu na czarno. Dzięki temu,
-    # gdyby kontroler miał drobny offset/nadwyżkę pikseli, niezapisany obszar
-    # będzie czarny zamiast pokazywać losowy „śnieg”.
-    disp.fill(0)
 
-    # 4. Bufor klatki w pamięci (rysujemy tu, potem wysyłamy całość)
+def tryb_kalibracji(disp, szer, wys):
+    """Rysuje statyczną planszę diagnostyczną i czeka (Ctrl+C, by wyjść).
+
+    Plansza pokazuje DOKŁADNIE adresowany obszar:
+      * gruba biała ramka po obrysie,
+      * pasy R/G/B (sprawdzenie kolejności kolorów),
+      * krzyżyki w rogach i napisy GORA/DOL/LEWO/PRAWO.
+    """
+    obraz = Image.new("RGB", (szer, wys))
+    rys = ImageDraw.Draw(obraz)
+
+    # Tło: 3 pionowe pasy R/G/B (do weryfikacji kolejności kolorów)
+    rys.rectangle((0, 0, szer // 3, wys), fill=(255, 0, 0))
+    rys.rectangle((szer // 3, 0, 2 * szer // 3, wys), fill=(0, 255, 0))
+    rys.rectangle((2 * szer // 3, 0, szer, wys), fill=(0, 0, 255))
+
+    # Gruba biała ramka po samym obrysie adresowanego obszaru
+    for i in range(3):
+        rys.rectangle((i, i, szer - 1 - i, wys - 1 - i), outline=(255, 255, 255))
+
+    # Krzyżyki w rogach
+    d = 12
+    for (cx, cy) in [(0, 0), (szer - 1, 0), (0, wys - 1), (szer - 1, wys - 1)]:
+        rys.line((cx - d, cy, cx + d, cy), fill=(255, 255, 0), width=2)
+        rys.line((cx, cy - d, cx, cy + d), fill=(255, 255, 0), width=2)
+
+    # Napisy orientacyjne
+    rys.text((szer // 2 - 12, 4), "GORA", fill=(0, 0, 0))
+    rys.text((szer // 2 - 8, wys - 14), "DOL", fill=(0, 0, 0))
+    rys.text((4, wys // 2), "LEWO", fill=(0, 0, 0))
+    rys.text((szer - 36, wys // 2), "PRAWO", fill=(0, 0, 0))
+
+    disp.image(obraz)
+    print("Plansza kalibracyjna wyświetlona. Zrób zdjęcie i przeanalizuj:")
+    print("  - czy biała ramka dotyka wszystkich 4 krawędzi szkła?")
+    print("  - czy pasy to kolejno: CZERWONY / ZIELONY / NIEBIESKI?")
+    print("  - gdzie zaczyna się 'śnieg' (jeśli jest)?")
+    print("Ctrl+C, aby zakończyć.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nKoniec kalibracji.")
+
+
+def tryb_animacji(disp, szer, wys):
+    """Animowana fala (test płynności SPI) z licznikiem FPS."""
     obraz = Image.new("RGB", (szer, wys))
     rys = ImageDraw.Draw(obraz)
 
     srodek_y = wys / 2
     amplituda = wys / 2 - 6     # margines od krawędzi
-    krok = 2                    # co ile pikseli liczymy punkt (mniej = gładziej, wolniej)
+    krok = 2                    # co ile pikseli liczymy punkt (mniej = gładziej)
 
     t = 0.0
     licznik = 0
     fps = 0.0
     czas_start = time.monotonic()
 
+    print(" Test płynności uruchomiony. Zatrzymanie: Ctrl + C")
     try:
         while True:
             # --- czyszczenie tła ---
@@ -157,9 +230,20 @@ def main():
 
     except KeyboardInterrupt:
         print("\nZatrzymywanie...")
-        # Wyczyść ekran na koniec (na czarno)
         rys.rectangle((0, 0, szer, wys), fill=(0, 0, 0))
         disp.image(obraz)
+
+
+def main():
+    disp, szer, wys = zbuduj_wyswietlacz()
+
+    # Wyczyść cały adresowany obszar na czarno (na starcie)
+    disp.fill(0)
+
+    if len(sys.argv) > 1 and sys.argv[1].lower().startswith("kalib"):
+        tryb_kalibracji(disp, szer, wys)
+    else:
+        tryb_animacji(disp, szer, wys)
 
 
 if __name__ == '__main__':
