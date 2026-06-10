@@ -159,6 +159,12 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
   (np. do `24000000`), sprawdź piny DC/RESET/CS.
 - **Obraz termowizji odwrócony** — zmień `np.fliplr` / dodaj `np.flipud`
   w `test2_mlx90640.py`.
+- **Poziome paski na termowizji** — to rozjeżdżanie się dwóch „podstron”
+  czujnika przy zbyt szybkim odczycie. Ustaw `ODSWIEZANIE = ...REFRESH_8_HZ`
+  (już domyślnie) i zostaw `ROZMYCIE = 3`. Paski znikają / mocno słabną.
+- **Obraz „pulsuje” / migocze jasnością** — to efekt automatycznego skalowania
+  kolorów. Zwiększ `WYGLADZANIE` (np. do `0.7`) albo ustaw stały zakres
+  temperatur, np. `ZAKRES_TEMP = (20.0, 40.0)`, w `test2_mlx90640.py`.
 - **`externally-managed-environment` przy pip** — instaluj zawsze wewnątrz
   `venv` (jak wyżej); nie używaj `sudo pip`.
 - **`Package 'libatlas-base-dev' has no installation candidate`** — to tylko

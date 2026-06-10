@@ -62,11 +62,25 @@ JAKOSC_JPEG = 80                  # jakość kodowania JPEG
 CZESTOTLIWOSC_I2C = 800000        # (ignorowane na RPi — prędkość ustawia config.txt)
 # Odświeżanie czujnika. UWAGA: to częstotliwość POJEDYNCZEJ PODSTRONY, a pełna
 # klatka składa się z DWÓCH podstron — więc realne FPS ≈ ODSWIEZANIE / 2.
-#   REFRESH_8_HZ  -> ~4 kl./s   (wymaga I2C >= 400 kHz)
-#   REFRESH_16_HZ -> ~8 kl./s   (wymaga I2C = 1 MHz, dtparam=i2c_arm_baudrate=1000000)
-#   REFRESH_32_HZ -> ~16 kl./s  (agresywne; może sypać błędami I/O na RPi 3B)
-# Jeśli przy 16 Hz dostajesz dużo "[Errno 5]", zejdź na REFRESH_8_HZ.
-ODSWIEZANIE = adafruit_mlx90640.RefreshRate.REFRESH_16_HZ
+#   REFRESH_8_HZ  -> ~4 kl./s   STABILNE, ZALECANE dla RPi 3B (mało pasków)
+#   REFRESH_16_HZ -> ~8 kl./s   szybsze, ale częściej daje poziome PASKI
+#   REFRESH_32_HZ -> ~16 kl./s  bardzo agresywne; zwykle paski/błędy na RPi 3B
+# Paski biorą się z rozjeżdżania dwóch "podstron" przy zbyt szybkim odczycie —
+# dlatego dla ładnego, stabilnego obrazu zostajemy przy 8 Hz.
+ODSWIEZANIE = adafruit_mlx90640.RefreshRate.REFRESH_8_HZ
+
+# --- STABILIZACJA OBRAZU ----------------------------------------------------
+# Zakres temperatur do kolorowania:
+#   None            -> automatyczny (z czujnika), ale WYGŁADZANY w czasie,
+#                      żeby kolory nie „pulsowały” klatka po klatce.
+#   (min, max)      -> stały zakres w °C, np. (20.0, 40.0) — najstabilniejszy
+#                      obraz, jeśli wiesz w jakim zakresie pracujesz.
+ZAKRES_TEMP = None
+# Siła wygładzania klatek w czasie (0.0 = brak, 0.9 = bardzo gładko/wolniej).
+# Uśrednia kolejne odczyty -> mniej szumu i słabsze paski. 0.5 to dobry start.
+WYGLADZANIE = 0.5
+# Lekkie rozmycie przestrzenne (0 = brak; 3/5 = delikatne). Wygładza paski.
+ROZMYCIE = 3
 
 # Wymiary natywne matrycy MLX90640
 SZER_CZUJNIKA = 32
@@ -165,6 +179,10 @@ def watek_czujnika(mlx, wyjscie):
     fps = 0.0
     bledy_z_rzedu = 0   # licznik kolejnych błędów I2C (do diagnostyki)
 
+    srednia_dane = None     # wygładzona w czasie macierz temperatur (EMA)
+    zakres_min = None       # wygładzony dolny próg kolorowania (tryb auto)
+    zakres_max = None       # wygładzony górny próg kolorowania (tryb auto)
+
     while True:
         try:
             # Odczyt 768 wartości temperatury (w stopniach Celsjusza)
@@ -198,23 +216,49 @@ def watek_czujnika(mlx, wyjscie):
         # (Dostosuj flip/rotację jeśli obraz jest odwrócony u Ciebie.)
         dane = np.fliplr(dane)
 
-        # 2. Statystyki temperatury
+        # 1a. WYGŁADZANIE W CZASIE (EMA) — redukuje szum i osłabia paski,
+        #     a także stabilizuje statystyki temperatury między klatkami.
+        if srednia_dane is None:
+            srednia_dane = dane
+        else:
+            srednia_dane = (WYGLADZANIE * srednia_dane
+                            + (1.0 - WYGLADZANIE) * dane)
+        dane = srednia_dane
+
+        # 2. Statystyki temperatury (z wygładzonej macierzy)
         t_min = float(dane.min())
         t_max = float(dane.max())
         t_srodek = float(dane[WYS_CZUJNIKA // 2, SZER_CZUJNIKA // 2])
 
-        # 3. Normalizacja do zakresu 0..255 (dynamiczny zakres min-max)
-        zakres = max(t_max - t_min, 1e-3)
-        znorm = ((dane - t_min) / zakres * 255.0).astype(np.uint8)
+        # 3. Wyznaczenie zakresu kolorowania — STABILNEGO, żeby obraz nie pulsował
+        if ZAKRES_TEMP is not None:
+            # stały zakres zadany ręcznie
+            dolny, gorny = float(ZAKRES_TEMP[0]), float(ZAKRES_TEMP[1])
+        else:
+            # tryb auto: powoli „goń” bieżące min/max (też EMA)
+            if zakres_min is None:
+                zakres_min, zakres_max = t_min, t_max
+            else:
+                zakres_min = 0.9 * zakres_min + 0.1 * t_min
+                zakres_max = 0.9 * zakres_max + 0.1 * t_max
+            dolny, gorny = zakres_min, zakres_max
 
-        # 4. Powiększenie z ładną interpolacją (gładka mapa zamiast "kratki")
+        # 4. Normalizacja do 0..255 wg stabilnego zakresu
+        zakres = max(gorny - dolny, 1e-3)
+        znorm = np.clip((dane - dolny) / zakres * 255.0, 0, 255).astype(np.uint8)
+
+        # 5. Powiększenie z ładną interpolacją (gładka mapa zamiast "kratki")
         powiekszony = cv2.resize(znorm, ROZMIAR_PODGLADU,
                                  interpolation=cv2.INTER_CUBIC)
 
-        # 5. Nałożenie palety kolorów (mapa cieplna)
+        # 5a. Delikatne rozmycie — dodatkowo wygładza ewentualne paski
+        if ROZMYCIE and ROZMYCIE >= 3:
+            powiekszony = cv2.GaussianBlur(powiekszony, (ROZMYCIE, ROZMYCIE), 0)
+
+        # 6. Nałożenie palety kolorów (mapa cieplna)
         kolor = cv2.applyColorMap(powiekszony, PALETA)
 
-        # 6. Krzyżyk w centrum + opisy temperatur
+        # 7. Krzyżyk w centrum + opisy temperatur
         cx, cy = ROZMIAR_PODGLADU[0] // 2, ROZMIAR_PODGLADU[1] // 2
         cv2.drawMarker(kolor, (cx, cy), (255, 255, 255),
                        markerType=cv2.MARKER_CROSS, markerSize=20, thickness=1)
@@ -230,13 +274,13 @@ def watek_czujnika(mlx, wyjscie):
         napis(f"SRODEK: {t_srodek:5.1f} C", (10, 75), (255, 255, 255))
         napis(f"FPS: {fps:4.1f}", (10, ROZMIAR_PODGLADU[1] - 15), (255, 255, 255))
 
-        # 7. Kodowanie do JPEG i przekazanie do serwera
+        # 8. Kodowanie do JPEG i przekazanie do serwera
         ok, bufor = cv2.imencode('.jpg', kolor,
                                  [int(cv2.IMWRITE_JPEG_QUALITY), JAKOSC_JPEG])
         if ok:
             wyjscie.aktualizuj(bufor.tobytes())
 
-        # 8. Pomiar FPS (co ~10 klatek)
+        # 9. Pomiar FPS (co ~10 klatek)
         licznik += 1
         if licznik >= 10:
             teraz = time.monotonic()
