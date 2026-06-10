@@ -131,11 +131,11 @@ python3 test3_tft_lcd.py kalibracja   # plansza diagnostyczna (gdy obraz nie pas
 Animowana, tęczowa fala pojawi się na ekranie; w terminalu i na ekranie
 zobaczysz licznik **FPS**. Zatrzymanie: `Ctrl + C`.
 
-Jeśli część ekranu się nie rysuje (np. „pasek śniegu” na dole) — uruchom tryb
-`kalibracja`. Narysuje białą ramkę po obrysie i pasy R/G/B, dzięki czemu
-zobaczysz dokładnie adresowany obszar i kolejność kolorów. Następnie dostrój
-w `test3_tft_lcd.py`: `STEROWNIK` (`ili9341`/`st7789`), `SZER_PANELU`/
-`WYS_PANELU` oraz `X_OFFSET`/`Y_OFFSET`.
+Domyślnie ustawiony jest sterownik **ST7789** (taki kontroler ma ten moduł 2.4"
+240×320). Gdyby kolory wyszły złe, w `test3_tft_lcd.py` masz „bezpieczniki”:
+`INWERSJA` (None/True/False) oraz `ZAMIEN_RB` (zamiana czerwony↔niebieski).
+Diagnostyka: `python3 test3_tft_lcd.py kalibracja` — biała ramka po obrysie i
+pasy czerwony/zielony/niebieski pokażą adresowany obszar i kolejność kolorów.
 
 Adres IP malinki sprawdzisz poleceniem `hostname -I`.
 
@@ -164,15 +164,18 @@ Adres IP malinki sprawdzisz poleceniem `hostname -I`.
   3. Potwierdź, że czujnik jest widoczny: `i2cdetect -y 1` → adres `0x33`.
 - **Ekran biały/szumy** — zmniejsz `BAUDRATE` w `test3_tft_lcd.py`
   (np. do `24000000`), sprawdź piny DC/RESET/CS.
-- **Szum/„śnieg” na dole ekranu (Test 3) lub obraz lekko poza ekranem:**
-  1. Jeśli szum jest w CAŁYM obrazie i reaguje na zegar SPI — zmniejsz
-     `BAUDRATE` (`24000000`→`16000000`→`12000000`) i skróć przewody MOSI/SCK.
-  2. Jeśli pasek śniegu jest TYLKO na dole i NIE reaguje ani na zegar, ani na
-     rotację — to nie jest problem SPI, tylko rozmiar/offset/sterownik. Uruchom
-     `python3 test3_tft_lcd.py kalibracja`, a potem w pliku dostrój:
-     - `STEROWNIK = "st7789"` (wiele „240x320” to w rzeczywistości ST7789),
-     - `SZER_PANELU` / `WYS_PANELU` (rzeczywisty rozmiar panelu),
-     - `X_OFFSET` / `Y_OFFSET` (przesunięcie pamięci; działa dla ST7789).
+- **Niepełny ekran / „pasek śniegu” + fioletowe (negatywowe) kolory (Test 3)** —
+  to znak, że użyto złego sterownika. Te moduły 2.4" 240×320 to zwykle **ST7789**
+  (mimo opisów „ILI9341”). W `test3_tft_lcd.py` ustaw `STEROWNIK = "st7789"`
+  (już domyślnie). Sterownik ST7789 włącza inwersję i poprawnie adresuje panel —
+  pasek i złe kolory znikają.
+- **Kolory nadal złe po zmianie sterownika:**
+  - „negatyw” (biel=czerń) → ustaw `INWERSJA = False`,
+  - czerwony i niebieski zamienione → ustaw `ZAMIEN_RB = True`.
+- **Losowy szum w CAŁYM obrazie reagujący na zegar SPI** — zmniejsz `BAUDRATE`
+  (`24000000`→`16000000`→`12000000`) i skróć przewody MOSI/SCK.
+- **Obraz lekko przesunięty (śnieg na innej krawędzi)** — dobierz `Y_OFFSET`
+  (np. `0`, `20`, `80`) i ew. `X_OFFSET`.
 - **Obraz termowizji odwrócony** — zmień `np.fliplr` / dodaj `np.flipud`
   w `test2_mlx90640.py`.
 - **Poziome paski na termowizji** — to rozjeżdżanie się dwóch „podstron”

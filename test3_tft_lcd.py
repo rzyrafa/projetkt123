@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TEST 3 — EKRAN TFT LCD (SPI, 240x320) — TEST PŁYNNOŚCI + KALIBRACJA
-==================================================================
+TEST 3 — EKRAN TFT LCD (SPI, ST7789/ILI9341 240x320) — PŁYNNOŚĆ + KALIBRACJA
+============================================================================
 
 Cel:
     Uruchomić wyświetlacz przez SPI i rysować zaawansowaną, animowaną falę
@@ -52,27 +52,36 @@ from PIL import Image, ImageDraw
 from adafruit_rgb_display import ili9341, st7789
 
 # --- KONFIGURACJA SPRZĘTU ---------------------------------------------------
-# Wybór sterownika. Wiele tanich modułów „240x320” to NIE ILI9341, lecz ST7789
-# (wtedy często pojawia się pasek/offset, jeśli użyjemy złego sterownika).
-#   "ili9341" — klasyczny ILI9341 (240x320)
-#   "st7789"  — ST7789 (240x320) — spróbuj, jeśli ILI9341 zostawia pasek
-STEROWNIK = "ili9341"
+# Wybór sterownika. UWAGA: wiele tanich modułów „2.4 cala 240x320” to w
+# rzeczywistości ST7789 (mimo że bywają opisywane jako ILI9341 i odwrotnie).
+# Twój wyświetlacz to ST7789 — i ten sterownik naprawia jednocześnie:
+#   * niepełny ekran / „pasek śniegu” (poprawne adresowanie 240x320),
+#   * fioletowe/negatywowe kolory (sterownik ST7789 włącza inwersję INVON).
+#   "st7789"  — ZALECANE dla Twojej płytki
+#   "ili9341" — klasyczny ILI9341 (zostaw, jeśli kiedyś podłączysz inny ekran)
+STEROWNIK = "st7789"
 
-# Rozmiar PANELU (w orientacji pionowej, natywnej). Dla większości modułów
-# 2.0–2.8" to 240 x 320. Jeśli kalibracja pokaże, że panel jest większy/mniejszy,
-# zmień te wartości.
+# Rozmiar PANELU w orientacji natywnej (pionowej). Dla tego modułu: 240 x 320.
 SZER_PANELU = 240
 WYS_PANELU = 320
 
-# Offsety pamięci (w pikselach). Dla czystego ILI9341 zwykle 0/0. Dla ST7789 i
-# klonów bywa potrzebne przesunięcie (np. 0/0, 0/80, 0/20). Jeśli obraz jest
-# „przesunięty”, a na przeciwległej krawędzi widać śnieg — dobierz tutaj.
+# Offsety pamięci (w pikselach). Dla tego panelu 0/0. Gdyby po zmianie sterownika
+# obraz był lekko przesunięty (śnieg na innej krawędzi), dobierz tu (np. 0/80).
 X_OFFSET = 0
 Y_OFFSET = 0
 
+# --- KOREKTA KOLORÓW (gdyby były złe po zmianie sterownika) ------------------
+# Inwersja kolorów:
+#   None  = nie ruszaj (sterownik ST7789 sam włącza INVON — zwykle poprawne)
+#   True  = wymuś inwersję ON  (komenda 0x21)
+#   False = wymuś inwersję OFF (komenda 0x20)  <- użyj, gdy kolory są „negatywem”
+INWERSJA = None
+# Zamiana kanałów R <-> B. Ustaw True, jeśli czerwony i niebieski są zamienione
+# (panel w kolejności BGR zamiast RGB).
+ZAMIEN_RB = False
+
 # Taktowanie SPI. Jeśli widzisz losowy szum w CAŁYM obrazie — zmniejszaj:
-# 24 -> 16 -> 12 MHz i skróć przewody MOSI/SCK. (Uwaga: szum tylko na dole,
-# niezależny od baudrate i rotacji, to NIE jest problem SPI — to rozmiar/offset.)
+# 24 -> 16 -> 12 MHz i skróć przewody MOSI/SCK.
 BAUDRATE = 24000000
 
 ROTACJA = 90          # 0/180 = pionowo, 90/270 = poziomo.
@@ -102,6 +111,12 @@ def zbuduj_wyswietlacz():
         # ILI9341 NIE przyjmuje x_offset/y_offset — używa stałego mapowania
         disp = ili9341.ILI9341(spi, **wspolne)
 
+    # Ewentualne wymuszenie inwersji kolorów (0x21 = ON, 0x20 = OFF)
+    if INWERSJA is True:
+        disp.write(0x21)
+    elif INWERSJA is False:
+        disp.write(0x20)
+
     # Wymiary „robocze” obrazu (po uwzględnieniu rotacji)
     if disp.rotation % 180 == 90:
         szer, wys = disp.height, disp.width
@@ -115,6 +130,14 @@ def zbuduj_wyswietlacz():
           f"SPI: {BAUDRATE/1_000_000:.0f} MHz")
     print("=" * 60)
     return disp, szer, wys
+
+
+def przeslij(disp, obraz):
+    """Wysyła obraz na ekran, z opcjonalną zamianą kanałów R<->B (kolejność BGR)."""
+    if ZAMIEN_RB:
+        r, g, b = obraz.split()
+        obraz = Image.merge("RGB", (b, g, r))
+    disp.image(obraz)
 
 
 def tryb_kalibracji(disp, szer, wys):
@@ -149,7 +172,7 @@ def tryb_kalibracji(disp, szer, wys):
     rys.text((4, wys // 2), "LEWO", fill=(0, 0, 0))
     rys.text((szer - 36, wys // 2), "PRAWO", fill=(0, 0, 0))
 
-    disp.image(obraz)
+    przeslij(disp, obraz)
     print("Plansza kalibracyjna wyświetlona. Zrób zdjęcie i przeanalizuj:")
     print("  - czy biała ramka dotyka wszystkich 4 krawędzi szkła?")
     print("  - czy pasy to kolejno: CZERWONY / ZIELONY / NIEBIESKI?")
@@ -214,7 +237,7 @@ def tryb_animacji(disp, szer, wys):
             rys.text((4, 2), f"FPS: {fps:4.1f}", fill=(255, 255, 255))
 
             # --- WYSYŁKA CAŁEJ KLATKI DO EKRANU PRZEZ SPI ---
-            disp.image(obraz)
+            przeslij(disp, obraz)
 
             # --- animacja w czasie ---
             t += 0.15
@@ -231,7 +254,7 @@ def tryb_animacji(disp, szer, wys):
     except KeyboardInterrupt:
         print("\nZatrzymywanie...")
         rys.rectangle((0, 0, szer, wys), fill=(0, 0, 0))
-        disp.image(obraz)
+        przeslij(disp, obraz)
 
 
 def main():
