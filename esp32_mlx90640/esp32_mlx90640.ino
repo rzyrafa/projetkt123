@@ -10,9 +10,14 @@
  * PODŁĄCZENIE MLX90640 do ESP32 (klasyczny ESP32 DevKit):
  *   MLX VIN  -> 3V3   (UWAGA: 3.3 V, NIE 5 V!)
  *   MLX GND  -> GND
- *   MLX SDA  -> GPIO21  (domyślne SDA na ESP32)
- *   MLX SCL  -> GPIO22  (domyślne SCL na ESP32)
+ *   MLX SDA  -> GPIO21  (zmień SDA_PIN/SCL_PIN poniżej, jeśli masz inną płytkę)
+ *   MLX SCL  -> GPIO22
  *   ESP32    -> USB     -> Raspberry Pi
+ *
+ * DIAGNOSTYKA: jeśli dioda miga SZYBKO, czujnik NIE jest wykryty. Otwórz wtedy
+ * Serial Monitor (921600) w Arduino IDE — firmware wypisze skan magistrali I2C
+ * (powinien znaleźć adres 0x33). Po podejrzeniu obrazu ZAMKNIJ Serial Monitor,
+ * bo zajmuje port i blokuje odczyt na Raspberry Pi.
  *
  * BIBLIOTEKI (Arduino IDE / arduino-cli):
  *   - "Adafruit MLX90640"  (zainstaluje też "Adafruit BusIO")
@@ -30,7 +35,10 @@
 
 // --- KONFIGURACJA -----------------------------------------------------------
 #define BAUD            921600     // szybki port USB (musi zgadzać się z Pi)
-#define I2C_CLOCK       800000     // 800 kHz na magistrali I2C czujnika
+#define I2C_CLOCK_DETEKCJA 100000  // wolniej przy wykrywaniu = pewniej
+#define I2C_CLOCK_PRACA    800000  // szybciej do odczytu ramek
+#define SDA_PIN         21         // <- zmień, jeśli Twoja płytka ma inne piny I2C
+#define SCL_PIN         22
 #define LICZBA_PIKSELI  (32 * 24)  // 768
 #define ROZMIAR_PAYLOAD (LICZBA_PIKSELI * 4)  // 3072 bajtów (float32)
 #define LED_PIN         2          // wbudowana dioda na wielu ESP32 DevKit (GPIO2)
@@ -41,22 +49,51 @@ const uint8_t HDR1 = 0x55;
 Adafruit_MLX90640 mlx;
 float ramka[LICZBA_PIKSELI];
 
+// Skan magistrali I2C — wypisuje znalezione adresy (pomoc przy diagnostyce)
+void skanujI2C() {
+  Serial.println("Skan I2C...");
+  int znalezione = 0;
+  for (uint8_t adres = 1; adres < 127; adres++) {
+    Wire.beginTransmission(adres);
+    if (Wire.endTransmission() == 0) {
+      Serial.print("  znaleziono urzadzenie pod adresem 0x");
+      Serial.println(adres, HEX);
+      znalezione++;
+    }
+  }
+  if (znalezione == 0) {
+    Serial.println("  BRAK urzadzen I2C! Sprawdz: zasilanie 3V3 (NIE 5V), GND,");
+    Serial.print("  oraz piny SDA=GPIO"); Serial.print(SDA_PIN);
+    Serial.print(", SCL=GPIO"); Serial.println(SCL_PIN);
+  } else {
+    Serial.println("  (MLX90640 powinien byc pod adresem 0x33)");
+  }
+}
+
 void setup() {
   Serial.begin(BAUD);
   pinMode(LED_PIN, OUTPUT);
   delay(100);
 
-  Wire.begin();                 // SDA=GPIO21, SCL=GPIO22 (domyślne)
-  Wire.setClock(I2C_CLOCK);
+  Wire.begin(SDA_PIN, SCL_PIN);     // jawne piny I2C
+  Wire.setClock(I2C_CLOCK_DETEKCJA);
 
-  // Inicjalizacja czujnika — w razie braku ponawiaj (czujnik mógł nie wstać).
-  // SYGNALIZACJA: gdy czujnik NIE jest wykryty, dioda miga SZYBKO. Jeśli widzisz
-  // szybkie miganie, problem jest na linii ESP32<->MLX90640 (piny/zasilanie).
+  // Inicjalizacja czujnika — w razie braku ponawiaj.
+  // SYGNALIZACJA: gdy czujnik NIE jest wykryty, dioda miga SZYBKO, a do Serial
+  // (921600) leci skan I2C — otwórz Serial Monitor, by zobaczyć, co jest na magistrali.
+  unsigned long ostatniSkan = 0;
   while (!mlx.begin(MLX90640_I2CADDR_DEFAULT, &Wire)) {
-    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    if (millis() - ostatniSkan > 1500) {
+      Serial.println("MLX90640 nie wykryty.");
+      skanujI2C();
+      ostatniSkan = millis();
+    }
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));  // szybkie miganie
     delay(100);
   }
   digitalWrite(LED_PIN, LOW);
+
+  Wire.setClock(I2C_CLOCK_PRACA);
 
   // Tryb i parametry: chess (mniej pasków) + 18-bit + 8 Hz (stabilne przez USB)
   mlx.setMode(MLX90640_CHESS);

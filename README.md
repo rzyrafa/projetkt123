@@ -252,9 +252,18 @@ Interpretacja wyniku:
 - **ramki OK + temperatury** → link działa; po prostu zrestartuj `test_termo_esp32.py`.
 
 **Dioda LED na ESP32 (GPIO2) jako wskaźnik:**
-- **szybkie miganie** = ESP32 NIE wykrył MLX90640 → problem ESP32↔czujnik
-  (zasilanie 3V3, piny SDA=GPIO21, SCL=GPIO22, masa),
+- **szybkie miganie** = ESP32 NIE wykrył MLX90640 → problem ESP32↔czujnik,
 - **powolne mruganie** = czujnik wykryty, ramki lecą do Pi (wszystko OK).
+
+**Gdy dioda miga szybko (czujnik niewykryty):**
+1. Otwórz **Serial Monitor** w Arduino IDE (prędkość **921600**) — firmware
+   wypisuje skan magistrali I2C. Powinien znaleźć adres **0x33**.
+   - **„BRAK urzadzen I2C”** → zasilanie/piny: VIN na **3V3 (NIE 5V)**, wspólny
+     GND, SDA→GPIO21, SCL→GPIO22 (nie zamienione), pewne styki.
+   - **jest inny adres niż 0x33** → inny moduł/wariant — daj znać.
+   - **inna płytka ESP32** (C3/S2/S3) ma inne piny I2C → zmień `SDA_PIN`/`SCL_PIN`
+     na górze `esp32_mlx90640.ino` i wgraj ponownie.
+2. Po diagnozie **zamknij Serial Monitor** (zajmuje port i blokuje odczyt na Pi).
 
 Dodatkowo `test_termo_esp32.py` / program główny wypisują w terminalu co 3 s
 statystyki (`ramki OK=.. błędne=..`) albo ostrzeżenie o braku danych.
