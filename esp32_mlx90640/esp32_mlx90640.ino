@@ -52,7 +52,8 @@
 // 230400 z zapasem wystarcza na ~4 kl./s. Musi być TAKIE SAMO jak na Raspberry Pi.
 #define BAUD            230400
 #define I2C_CLOCK_DETEKCJA 100000  // wolniej przy wykrywaniu = pewniej
-#define I2C_CLOCK_PRACA    800000  // szybciej do odczytu ramek
+#define I2C_CLOCK_PRACA    400000  // 400 kHz = kompromis: dość szybko, ale odporniej
+                                   // na marne/długie przewody (mniej zrywania I2C)
 #define SDA_PIN         21         // <- zmień, jeśli Twoja płytka ma inne piny I2C
 #define SCL_PIN         22
 // UART2 do połączenia po pinach z Raspberry Pi (wariant B — osobne zasilanie):
