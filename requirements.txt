@@ -1,0 +1,10 @@
+# Biblioteki Pythona instalowane przez pip (wewnątrz venv --system-site-packages)
+# Uwaga: picamera2 oraz OpenCV instalujemy z APT (patrz install.sh / README),
+# bo działają znacznie lepiej jako pakiety systemowe na Raspberry Pi.
+
+adafruit-blinka                     # warstwa CircuitPython na RPi: board, busio, digitalio
+adafruit-circuitpython-mlx90640     # sterownik kamery termowizyjnej MLX90640 (Test 2)
+adafruit-circuitpython-rgb-display  # sterownik wyświetlacza ILI9341 po SPI (Test 3)
+numpy                               # operacje na macierzy temperatur (Test 2)
+Pillow                              # rysowanie klatek dla wyświetlacza (Test 3)
+pyserial                            # odczyt termowizji z ESP32 przez USB (port szeregowy)
