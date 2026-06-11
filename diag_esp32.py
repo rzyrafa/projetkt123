@@ -50,19 +50,37 @@ def main():
     print("Czekam 2 s (ESP32 restartuje się po otwarciu portu)...")
     time.sleep(2)
 
-    # --- TEST 1: surowy throughput ---
+    # --- TEST 1: surowy throughput + próbka bajtów ---
     print("\n[TEST 1] Ile bajtów przychodzi w ciągu 3 s...")
     ser.reset_input_buffer()
     t0 = time.time()
     suma_bajtow = 0
+    probka = bytearray()
     while time.time() - t0 < 3:
         n = ser.in_waiting
         if n:
-            ser.read(n)
-            suma_bajtow += n
+            dane = ser.read(n)
+            suma_bajtow += len(dane)
+            if len(probka) < 96:
+                probka.extend(dane[: 96 - len(probka)])
         else:
             time.sleep(0.01)
     print(f"  Odebrano {suma_bajtow} bajtów (~{suma_bajtow/3:.0f} B/s).")
+
+    if probka:
+        hex_str = " ".join(f"{b:02X}" for b in probka)
+        ascii_str = "".join(chr(b) if 32 <= b < 127 else "." for b in probka)
+        print("  Próbka surowych bajtów (HEX):")
+        print("   ", hex_str)
+        print("  Ta sama próbka jako tekst (ASCII):")
+        print("   ", ascii_str)
+        if any(b in (HDR0,) for b in probka):
+            print("  (W próbce jest bajt 0xAA — to dobrze, szukamy pary 0xAA 0x55.)")
+        czytelne = sum(1 for b in probka if 32 <= b < 127)
+        if czytelne > len(probka) * 0.7:
+            print("  >>> UWAGA: dane wyglądają na TEKST (czytelne znaki). To znaczy, że")
+            print("      na ESP32 działa INNY szkic (np. przykład wypisujący liczby),")
+            print("      a NIE nasz binarny firmware esp32_mlx90640.ino. Wgraj nasz szkic.")
 
     if suma_bajtow == 0:
         print("\n  >>> DIAGNOZA: ZERO bajtów — ESP32 nic nie wysyła.")
