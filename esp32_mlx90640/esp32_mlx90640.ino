@@ -144,10 +144,27 @@ void setup() {
 }
 
 void loop() {
+  static int bledyOdczytu = 0;
+
   // Odczyt pełnej ramki (768 wartości w °C). 0 = sukces.
   if (mlx.getFrame(ramka) != 0) {
-    return;  // błąd odczytu — pomiń tę iterację
+    // Błąd odczytu — przy niepewnym styku (zwłaszcza GND) zdarza się seriami.
+    bledyOdczytu++;
+    if (bledyOdczytu >= 10) {
+      // Próba automatycznego odzyskania: ponowna inicjalizacja czujnika.
+      // Dopóki się nie uda, dioda miga SZYBKO (czujnik utracony).
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+      if (mlx.begin(MLX90640_I2CADDR_DEFAULT, &Wire)) {
+        mlx.setMode(MLX90640_CHESS);
+        mlx.setResolution(MLX90640_ADC_18BIT);
+        mlx.setRefreshRate(MLX90640_8_HZ);
+        bledyOdczytu = 0;
+      }
+      delay(100);
+    }
+    return;
   }
+  bledyOdczytu = 0;
 
   // Policz prostą sumę kontrolną z bajtów ramki
   uint8_t* bajty = (uint8_t*)ramka;

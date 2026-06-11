@@ -300,6 +300,16 @@ Interpretacja wyniku:
 - **szybkie miganie** = ESP32 NIE wykrył MLX90640 → problem ESP32↔czujnik,
 - **powolne mruganie** = czujnik wykryty, ramki lecą do Pi (wszystko OK).
 
+**Czujnik działa „chwilami”, dioda raz mruga, raz gaśnie/szybko miga, pomaga
+zmiana pinu GND** → to **niepewny styk masy (GND)** lub luźne SDA/SCL. MLX90640
+jest na to bardzo czuły. Trwałe rozwiązanie:
+- **Przylutuj** goldpiny do modułu MLX90640 i ESP32 (płytka stykowa = ciągłe rwanie),
+  albo użyj pewnych, krótkich przewodów; unikaj luźnych Dupontów.
+- Zapewnij **solidną, wspólną masę** ESP↔czujnik (najlepiej jeden pewny GND).
+- Dodaj **rezystory pull-up 4,7 kΩ** z SDA→3V3 i SCL→3V3 (jeśli moduł ich nie ma).
+- Firmware sam próbuje się odzyskać po zerwaniu I2C (ponowna inicjalizacja), ale
+  to nie zastąpi dobrego połączenia.
+
 **Gdy dioda miga szybko (czujnik niewykryty):**
 1. Otwórz **Serial Monitor** w Arduino IDE (prędkość **230400**) — firmware
    wypisuje skan magistrali I2C. Powinien znaleźć adres **0x33**.
