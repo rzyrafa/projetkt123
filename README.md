@@ -276,6 +276,18 @@ Interpretacja wyniku:
 Dodatkowo `test_termo_esp32.py` / program główny wypisują w terminalu co 3 s
 statystyki (`ramki OK=.. błędne=..`) albo ostrzeżenie o braku danych.
 
+### Pętla resetu / brownout (dioda zgaszona na Pi, „zalew” śmieci)
+Objawy: po podłączeniu do Raspberry Pi **dioda ESP32 nie świeci**, a `diag_esp32.py`
+pokazuje **nierealnie dużo bajtów** (np. >100 KB/s, czyli więcej niż pozwala baud)
+złożonych z powtarzających się śmieci bez nagłówków. To znaczy, że **ESP32 resetuje
+się w kółko z powodu za słabego zasilania** z portu USB malinki (to ciągłe komunikaty
+bootloadera).
+- Użyj **mocnego zasilacza Pi** (oryginał 5V/2,5–3A).
+- Użyj **dobrego, krótkiego kabla USB** (z danymi, nie „tylko ładowanie”).
+- Najpewniej pomoże **zasilany HUB USB** między Pi a ESP32 (ESP32 bierze prąd z huba).
+- Opcjonalnie na Pi 3B: dodaj `max_usb_current=1` do `config.txt` i zrestartuj.
+Po poprawie zasilania dioda powinna zacząć **mrugać**.
+
 ### Najczęstsze problemy (ESP32)
 - **`Nie mogę otworzyć portu`** — zły port (`ls /dev/ttyUSB* /dev/ttyACM*`) albo
   brak uprawnień (grupa `dialout` + wylogowanie/restart).
