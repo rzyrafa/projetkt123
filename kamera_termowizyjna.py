@@ -81,7 +81,10 @@ ZAMIEN_RB = False        # True, jeśli czerwony i niebieski są zamienione (BGR
 #              (firmware: katalog esp32_mlx90640/). ZALECANE w Twoim zestawie.
 #   "i2c"   -> MLX90640 podłączony bezpośrednio do pinów I2C malinki (wariant zapasowy)
 ZRODLO_TERMO = "esp32"
-PORT_ESP32 = "/dev/ttyUSB0"   # port USB ESP32 (sprawdź: ls /dev/ttyUSB* /dev/ttyACM*)
+# Port termowizji z ESP32:
+#   - przez USB:        "/dev/ttyUSB0" (sprawdź: ls /dev/ttyUSB* /dev/ttyACM*)
+#   - po pinach GPIO:   "/dev/serial0" (UART; ESP32 z osobnym zasilaniem, patrz README)
+PORT_ESP32 = "/dev/ttyUSB0"
 BAUD_ESP32 = 230400           # musi zgadzać się z firmware ESP32 (pewne na RPi)
 CZESTOTLIWOSC_I2C = 800000    # używane tylko gdy ZRODLO_TERMO = "i2c"
 

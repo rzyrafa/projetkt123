@@ -224,11 +224,51 @@ python3 test_termo_esp32.py /dev/ttyACM0     # inny port
 ```
 Podgląd: `http://<IP_MALINKI>:8001/`. To odpowiednik Testu 2, ale dane idą z ESP32.
 
+### 4b. (Alternatywa) Połączenie po pinach GPIO — ESP32 z osobnym zasilaniem
+Gdy nie chcesz zasilać ESP32 z malinki (np. masz ESP32 na powerbanku, a Pi na
+własnym zasilaczu), połącz je **UART-em po pinach** zamiast USB. Oba mają logikę
+**3,3 V**, więc łączymy wprost (bez konwertera poziomów).
+
+Podłączenie (minimalne — jednokierunkowo, ESP32 → Pi):
+| ESP32 | Raspberry Pi |
+|-------|--------------|
+| GPIO17 (TX2) | pin 10 (GPIO15 / RXD) |
+| GND | pin 6 (GND) — **WSPÓLNA MASA, KONIECZNIE** |
+| (opcjonalnie) GPIO16 (RX2) | pin 8 (GPIO14 / TXD) |
+
+ESP32 zasilasz z powerbanka (swój USB), Raspberry Pi z własnego zasilacza.
+**Masy obu układów muszą być połączone** — bez tego UART nie zadziała.
+
+Włączenie sprzętowego UART na Raspberry Pi (jednorazowo):
+```bash
+sudo raspi-config
+#  -> 3 Interface Options -> I6 Serial Port
+#     "login shell over serial?"      -> NIE (No)
+#     "serial port hardware enabled?" -> TAK (Yes)
+```
+Dla STABILNEGO UART na Pi 3B przełącz dobry UART (PL011) na piny GPIO, wyłączając
+Bluetooth (mini-UART bywa niestabilny przy baudzie):
+```bash
+echo "dtoverlay=disable-bt" | sudo tee -a /boot/firmware/config.txt   # Bullseye: /boot/config.txt
+sudo systemctl disable hciuart
+sudo reboot
+```
+Po restarcie port to **`/dev/serial0`**. Test:
+```bash
+source venv/bin/activate
+python3 test_termo_esp32.py /dev/serial0     # -> http://<IP>:8001/
+python3 diag_esp32.py /dev/serial0 skan       # gdyby były problemy z baudem
+```
+W programie głównym ustaw `PORT_ESP32 = "/dev/serial0"`.
+
+> Firmware wysyła ramki przez OBA wyjścia naraz (USB i GPIO/UART2), więc ten sam
+> wgrany szkic działa w obu wariantach — wybierasz tylko port po stronie Pi.
+
 ### 5. Użycie w programie głównym
 W `kamera_termowizyjna.py` (góra pliku) ustaw:
 ```python
 ZRODLO_TERMO = "esp32"          # albo "i2c" dla bezpośredniego podłączenia
-PORT_ESP32   = "/dev/ttyUSB0"    # Twój port USB
+PORT_ESP32   = "/dev/ttyUSB0"    # USB; dla połączenia po pinach: "/dev/serial0"
 BAUD_ESP32   = 230400
 ```
 Reszta (tryby, fuzja, ekran) działa tak samo. Przełączenie z powrotem na I2C =

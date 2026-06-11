@@ -7,17 +7,29 @@
  *   przez USB (port szeregowy) do Raspberry Pi. Dzięki temu malinka nie musi
  *   walczyć ze swoim wadliwym sprzętowym I2C — dostaje dane „na gotowo”.
  *
- * PODŁĄCZENIE MLX90640 do ESP32 (klasyczny ESP32 DevKit):
+ * PODŁĄCZENIE MLX90640 do ESP32 (klasyczny ESP32 DevKit v1 / WROOM-32):
  *   MLX VIN  -> 3V3   (UWAGA: 3.3 V, NIE 5 V!)
  *   MLX GND  -> GND
  *   MLX SDA  -> GPIO21  (zmień SDA_PIN/SCL_PIN poniżej, jeśli masz inną płytkę)
  *   MLX SCL  -> GPIO22
- *   ESP32    -> USB     -> Raspberry Pi
  *
- * DIAGNOSTYKA: jeśli dioda miga SZYBKO, czujnik NIE jest wykryty. Otwórz wtedy
- * Serial Monitor (921600) w Arduino IDE — firmware wypisze skan magistrali I2C
- * (powinien znaleźć adres 0x33). Po podejrzeniu obrazu ZAMKNIJ Serial Monitor,
- * bo zajmuje port i blokuje odczyt na Raspberry Pi.
+ * POŁĄCZENIE Z RASPBERRY PI — DWA WARIANTY:
+ *   A) Przez USB: po prostu wepnij ESP32 kablem USB do malinki. Dane lecą wtedy
+ *      portem USB (Serial). Wymaga DOBREGO zasilania Pi (inaczej ESP32 się resetuje).
+ *   B) Po pinach GPIO (UART) — gdy ESP32 ma OSOBNE zasilanie (np. powerbank),
+ *      a Pi własny zasilacz. Dane lecą przez Serial2 (GPIO17). Podłącz:
+ *        ESP32 GPIO17 (TX2)  -> Raspberry Pi pin 10 (GPIO15 / RXD)
+ *        ESP32 GND           -> Raspberry Pi pin 6  (GND)   <-- WSPÓLNA MASA, KONIECZNIE!
+ *        (opcjonalnie ESP32 GPIO16 (RX2) -> Pi pin 8 / GPIO14 / TXD)
+ *      Oba układy mają logikę 3,3 V, więc łączymy wprost (bez konwertera poziomów).
+ *      Na Pi włącz UART (patrz README) i używaj portu /dev/serial0.
+ *
+ * Firmware wysyła ramki danych przez OBA wyjścia (USB Serial i Serial2), więc
+ * działa w obu wariantach. Diagnostyka tekstowa (skan I2C) idzie na USB (Serial).
+ *
+ * DIAGNOSTYKA: jeśli dioda miga SZYBKO, czujnik NIE jest wykryty. Podłącz ESP32
+ * przez USB i otwórz Serial Monitor (230400) — firmware wypisze skan I2C
+ * (powinien znaleźć adres 0x33). Po diagnozie ZAMKNIJ Serial Monitor.
  *
  * BIBLIOTEKI (Arduino IDE / arduino-cli):
  *   - "Adafruit MLX90640"  (zainstaluje też "Adafruit BusIO")
@@ -43,6 +55,9 @@
 #define I2C_CLOCK_PRACA    800000  // szybciej do odczytu ramek
 #define SDA_PIN         21         // <- zmień, jeśli Twoja płytka ma inne piny I2C
 #define SCL_PIN         22
+// UART2 do połączenia po pinach z Raspberry Pi (wariant B — osobne zasilanie):
+#define TX2_PIN         17         // ESP32 TX2 -> Raspberry Pi pin 10 (GPIO15/RXD)
+#define RX2_PIN         16         // ESP32 RX2 (opcjonalnie) <- Pi pin 8 (GPIO14/TXD)
 #define LICZBA_PIKSELI  (32 * 24)  // 768
 #define ROZMIAR_PAYLOAD (LICZBA_PIKSELI * 4)  // 3072 bajtów (float32)
 #define LED_PIN         2          // wbudowana dioda na wielu ESP32 DevKit (GPIO2)
@@ -74,8 +89,25 @@ void skanujI2C() {
   }
 }
 
+// Wysyła jedną ramkę przez OBA wyjścia: USB (Serial) i UART2 (Serial2).
+// Dzięki temu działa zarówno wariant USB, jak i połączenie po pinach GPIO.
+void wyslijRamke(uint8_t* bajty, uint16_t suma) {
+  Serial.write(HDR0);
+  Serial.write(HDR1);
+  Serial.write(bajty, ROZMIAR_PAYLOAD);
+  Serial.write((uint8_t)(suma & 0xFF));
+  Serial.write((uint8_t)((suma >> 8) & 0xFF));
+
+  Serial2.write(HDR0);
+  Serial2.write(HDR1);
+  Serial2.write(bajty, ROZMIAR_PAYLOAD);
+  Serial2.write((uint8_t)(suma & 0xFF));
+  Serial2.write((uint8_t)((suma >> 8) & 0xFF));
+}
+
 void setup() {
-  Serial.begin(BAUD);
+  Serial.begin(BAUD);                                  // USB (wariant A + diagnostyka)
+  Serial2.begin(BAUD, SERIAL_8N1, RX2_PIN, TX2_PIN);   // GPIO UART (wariant B)
   pinMode(LED_PIN, OUTPUT);
   delay(100);
 
@@ -124,12 +156,8 @@ void loop() {
     suma += bajty[i];
   }
 
-  // Wyślij: nagłówek + dane + suma kontrolna
-  Serial.write(HDR0);
-  Serial.write(HDR1);
-  Serial.write(bajty, ROZMIAR_PAYLOAD);
-  Serial.write((uint8_t)(suma & 0xFF));
-  Serial.write((uint8_t)((suma >> 8) & 0xFF));
+  // Wyślij ramkę (przez USB i UART2 jednocześnie)
+  wyslijRamke(bajty, suma);
 
   // SYGNALIZACJA: dioda zmienia stan przy każdej wysłanej ramce (powolne
   // "mruganie" = wszystko działa, czujnik wykryty i dane lecą do Pi).
