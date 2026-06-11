@@ -11,7 +11,13 @@ ekranie TFT (Test 3).
 |------|-----------|---------|-------------|
 | 1 | Kamera RGB (Pi Camera Module 2) | Strumień wideo na żywo | `http://<IP_MALINKI>:8000/` |
 | 2 | Termowizja MLX90640 (I2C) | Mapa cieplna na żywo | `http://<IP_MALINKI>:8001/` |
-| 3 | Ekran TFT LCD (SPI, ILI9341) | Płynna animowana fala + FPS | bezpośrednio na ekranie |
+| 3 | Ekran TFT LCD (SPI, ST7789) | Płynna animowana fala + FPS | bezpośrednio na ekranie |
+
+Dodatkowo:
+- **`kamera_termowizyjna.py`** — program główny: fuzja RGB + termowizja na ekranie.
+- **Wariant ESP32** — termowizja czytana przez ESP32 i przesyłana po USB do Pi
+  (firmware w `esp32_mlx90640/`, test linku: `test_termo_esp32.py`). Patrz sekcja
+  „Wariant: termowizja przez ESP32 (USB)” niżej.
 
 ---
 
@@ -24,9 +30,11 @@ ekranie TFT (Test 3).
 - **MLX90640 → `adafruit-circuitpython-mlx90640`** (odczyt) + **`OpenCV`**
   (szybkie skalowanie, paleta kolorów, kodowanie JPEG) + **`numpy`**.
   OpenCV jest znacznie wydajniejszy od matplotlib → płynniejszy podgląd.
-- **Ekran TFT → `adafruit-circuitpython-rgb-display`** (sterownik ILI9341 ze
+- **Ekran TFT → `adafruit-circuitpython-rgb-display`** (sterownik **ST7789** ze
   **sprzętowym SPI**) + **`Pillow`** (rysowanie całej klatki w buforze).
   Rysowanie „hurtem” i jedno `disp.image()` = maksymalna płynność, brak migotania.
+- **Wariant ESP32 → `pyserial`** (odczyt ramek termowizji z ESP32 po USB) +
+  firmware Arduino z biblioteką **Adafruit MLX90640**.
 
 Wszystkie skrypty unikają funkcji otwierających okna (`imshow`, `plt.show()` itd.).
 
@@ -175,6 +183,67 @@ Podgląd w przeglądarce (gdy `WEB_PODGLAD = True`): `http://<IP_MALINKI>:8080/`
 > fizycznie przesunięte, więc nałożenie jest przybliżone. Dla idealnego pokrycia
 > trzeba by skalibrować przesunięcie/skalę termowizji względem RGB — w razie
 > potrzeby można to dodać.
+
+---
+
+## Wariant: termowizja przez ESP32 (USB)
+
+Zamiast podłączać MLX90640 do I2C malinki, czujnik wpinasz w **ESP32**, a ESP32
+łączysz **kablem USB** z Raspberry Pi. ESP32 czyta czujnik i wysyła gotowe ramki
+temperatur — malinka nie walczy ze swoim sprzętowym I2C, a odczyt jest stabilny.
+
+### 1. Podłączenie MLX90640 do ESP32 (ESP32 DevKit)
+| MLX90640 | ESP32 |
+|----------|-------|
+| VIN | 3V3 (NIE 5 V!) |
+| GND | GND |
+| SDA | GPIO21 (domyślne SDA) |
+| SCL | GPIO22 (domyślne SCL) |
+
+ESP32 → kabel USB → Raspberry Pi.
+
+### 2. Wgranie firmware na ESP32
+Plik: `esp32_mlx90640/esp32_mlx90640.ino`. W Arduino IDE (lub `arduino-cli`):
+- Zainstaluj bibliotekę **„Adafruit MLX90640”** (pociągnie też „Adafruit BusIO”).
+- Wybierz płytkę **„ESP32 Dev Module”** (pakiet „esp32” by Espressif).
+- Wgraj szkic. Prędkość portu w firmware: **921600** (zgodna z kodem na Pi).
+
+### 3. Znalezienie portu USB i uprawnienia (na Raspberry Pi)
+```bash
+ls /dev/ttyUSB* /dev/ttyACM*          # zwykle /dev/ttyUSB0 (CP2102/CH340) lub /dev/ttyACM0
+sudo usermod -aG dialout $USER && echo "Wyloguj się/zrestartuj, by zadziałało"
+```
+
+### 4. Test samego linku ESP32 (w przeglądarce)
+```bash
+source venv/bin/activate
+python3 test_termo_esp32.py                 # port /dev/ttyUSB0
+python3 test_termo_esp32.py /dev/ttyACM0     # inny port
+```
+Podgląd: `http://<IP_MALINKI>:8001/`. To odpowiednik Testu 2, ale dane idą z ESP32.
+
+### 5. Użycie w programie głównym
+W `kamera_termowizyjna.py` (góra pliku) ustaw:
+```python
+ZRODLO_TERMO = "esp32"          # albo "i2c" dla bezpośredniego podłączenia
+PORT_ESP32   = "/dev/ttyUSB0"    # Twój port USB
+BAUD_ESP32   = 921600
+```
+Reszta (tryby, fuzja, ekran) działa tak samo. Przełączenie z powrotem na I2C =
+ustawienie `ZRODLO_TERMO = "i2c"`.
+
+### Protokół (dla ciekawych / diagnostyki)
+ESP32 wysyła ramki binarnie: `[0xAA][0x55]` + 768 × `float32` (LE, 3072 B) +
+suma kontrolna `uint16` (LE). Odbiór i resynchronizacja: `termo_zrodlo.py`
+(klasa `CzujnikESP32`). Uszkodzone ramki są odrzucane po sumie kontrolnej.
+
+### Najczęstsze problemy (ESP32)
+- **`Nie mogę otworzyć portu`** — zły port (sprawdź `ls /dev/ttyUSB* /dev/ttyACM*`)
+  albo brak uprawnień (grupa `dialout` + wylogowanie/restart).
+- **Brak obrazu, port się otwiera** — sprawdź, czy firmware jest wgrany i czy
+  `BAUD_ESP32` = 921600 po obu stronach. Zajęty port (np. otwarty Serial Monitor
+  w Arduino) też zablokuje odczyt.
+- **Obraz odwrócony** — dostrój `TERMO_LUSTRO_X` / `TERMO_LUSTRO_Y`.
 
 ---
 

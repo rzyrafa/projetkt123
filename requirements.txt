@@ -7,3 +7,4 @@ adafruit-circuitpython-mlx90640     # sterownik kamery termowizyjnej MLX90640 (T
 adafruit-circuitpython-rgb-display  # sterownik wyświetlacza ILI9341 po SPI (Test 3)
 numpy                               # operacje na macierzy temperatur (Test 2)
 Pillow                              # rysowanie klatek dla wyświetlacza (Test 3)
+pyserial                            # odczyt termowizji z ESP32 przez USB (port szeregowy)

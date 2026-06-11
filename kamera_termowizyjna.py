@@ -40,19 +40,19 @@ import select
 import socketserver
 import logging
 from http import server
-from threading import Condition, Thread, Lock
+from threading import Condition, Thread
 
 import numpy as np
 import cv2
 
 import board
-import busio
 import digitalio
-import adafruit_mlx90640
 from adafruit_rgb_display import st7789, ili9341
 from PIL import Image
 
 from picamera2 import Picamera2
+
+from termo_zrodlo import CzujnikESP32, CzujnikI2C
 
 # ============================================================================
 #  KONFIGURACJA
@@ -75,9 +75,16 @@ BAUDRATE = 24000000
 INWERSJA = False         # False = INVOFF (0x20), True = INVON (0x21), None = nie ruszaj
 ZAMIEN_RB = False        # True, jeśli czerwony i niebieski są zamienione (BGR)
 
-# --- TERMOWIZJA (ustawienia z Testu 2) --------------------------------------
-CZESTOTLIWOSC_I2C = 800000
-ODSWIEZANIE = adafruit_mlx90640.RefreshRate.REFRESH_8_HZ
+# --- TERMOWIZJA -------------------------------------------------------------
+# Źródło danych termowizji:
+#   "esp32" -> MLX90640 podłączony do ESP32, a ESP32 przez USB do Raspberry Pi
+#              (firmware: katalog esp32_mlx90640/). ZALECANE w Twoim zestawie.
+#   "i2c"   -> MLX90640 podłączony bezpośrednio do pinów I2C malinki (wariant zapasowy)
+ZRODLO_TERMO = "esp32"
+PORT_ESP32 = "/dev/ttyUSB0"   # port USB ESP32 (sprawdź: ls /dev/ttyUSB* /dev/ttyACM*)
+BAUD_ESP32 = 921600           # musi zgadzać się z firmware ESP32
+CZESTOTLIWOSC_I2C = 800000    # używane tylko gdy ZRODLO_TERMO = "i2c"
+
 PALETA = cv2.COLORMAP_INFERNO
 WYGLADZANIE = 0.5        # wygładzanie termowizji w czasie (0..0.9)
 # Dopasowanie orientacji termowizji do kamery (zależy od montażu czujnika):
@@ -99,56 +106,6 @@ WYS_CZUJNIKA = 24
 
 # Dostępne tryby
 TRYBY = ["rgb", "termo", "fuzja", "gorace"]
-
-
-# ============================================================================
-#  WĄTEK TERMOWIZJI — czyta MLX90640 w tle i udostępnia najnowszą macierz °C
-# ============================================================================
-class CzujnikTermowizji:
-    def __init__(self, mlx):
-        self.mlx = mlx
-        self.lock = Lock()
-        self.dane = None          # ostatnia (wygładzona) macierz temperatur 24x32
-        self._srednia = None
-        self._surowa = [0.0] * (SZER_CZUJNIKA * WYS_CZUJNIKA)
-
-    def start(self):
-        Thread(target=self._petla, daemon=True).start()
-
-    def _petla(self):
-        bledy = 0
-        while True:
-            try:
-                self.mlx.getFrame(self._surowa)
-                bledy = 0
-            except ValueError:
-                continue            # CRC / dane niegotowe — pomiń
-            except (OSError, RuntimeError) as e:
-                bledy += 1
-                if bledy <= 3 or bledy % 30 == 0:
-                    logging.warning("Błąd I2C MLX90640 (%d): %s", bledy, e)
-                time.sleep(0.1)
-                continue
-
-            d = np.array(self._surowa, dtype=np.float32).reshape(
-                (WYS_CZUJNIKA, SZER_CZUJNIKA))
-            if TERMO_LUSTRO_X:
-                d = np.fliplr(d)
-            if TERMO_LUSTRO_Y:
-                d = np.flipud(d)
-
-            # Wygładzanie w czasie (EMA) — mniej szumu i migotania
-            if self._srednia is None:
-                self._srednia = d
-            else:
-                self._srednia = WYGLADZANIE * self._srednia + (1 - WYGLADZANIE) * d
-
-            with self.lock:
-                self.dane = self._srednia.copy()
-
-    def pobierz(self):
-        with self.lock:
-            return None if self.dane is None else self.dane.copy()
 
 
 # ============================================================================
@@ -357,12 +314,19 @@ def main():
     picam2.start()
     time.sleep(1.0)   # czas na ustawienie ekspozycji
 
-    # 3. Termowizja MLX90640
-    print("Inicjalizacja termowizji MLX90640...")
-    i2c = busio.I2C(board.SCL, board.SDA, frequency=CZESTOTLIWOSC_I2C)
-    mlx = adafruit_mlx90640.MLX90640(i2c)
-    mlx.refresh_rate = ODSWIEZANIE
-    czujnik = CzujnikTermowizji(mlx)
+    # 3. Termowizja — źródło ESP32 (USB) albo bezpośrednie I2C
+    if ZRODLO_TERMO == "esp32":
+        print(f"Inicjalizacja termowizji z ESP32 ({PORT_ESP32})...")
+        czujnik = CzujnikESP32(
+            port=PORT_ESP32, baud=BAUD_ESP32,
+            lustro_x=TERMO_LUSTRO_X, lustro_y=TERMO_LUSTRO_Y,
+            wygladzanie=WYGLADZANIE)
+    else:
+        print("Inicjalizacja termowizji bezpośrednio z MLX90640 (I2C)...")
+        czujnik = CzujnikI2C(
+            czestotliwosc=CZESTOTLIWOSC_I2C,
+            lustro_x=TERMO_LUSTRO_X, lustro_y=TERMO_LUSTRO_Y,
+            wygladzanie=WYGLADZANIE)
     czujnik.start()
 
     # 4. Opcjonalny podgląd web

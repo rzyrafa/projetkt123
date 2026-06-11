@@ -71,6 +71,9 @@ echo ">>> [6/6] Instalacja bibliotek Pythona (pip)..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
+echo ">>> Uprawnienia do portu USB (ESP32) — dodanie użytkownika do grupy dialout..."
+sudo usermod -aG dialout "$USER" || true
+
 echo ""
 echo "============================================================"
 echo " INSTALACJA ZAKOŃCZONA!"
@@ -85,7 +88,12 @@ echo " 3) Aktywuj środowisko przed uruchomieniem skryptów:"
 echo "      source venv/bin/activate"
 echo ""
 echo " 4) Uruchom testy:"
-echo "      python3 test1_kamera_rgb.py     # -> http://<IP>:8000/"
-echo "      python3 test2_mlx90640.py       # -> http://<IP>:8001/"
-echo "      python3 test3_tft_lcd.py        # animacja na ekranie TFT"
+echo "      python3 test1_kamera_rgb.py        # -> http://<IP>:8000/"
+echo "      python3 test2_mlx90640.py          # MLX90640 po I2C -> http://<IP>:8001/"
+echo "      python3 test3_tft_lcd.py           # animacja na ekranie TFT"
+echo "      python3 test_termo_esp32.py        # termowizja z ESP32 (USB) -> :8001/"
+echo "      python3 kamera_termowizyjna.py     # PROGRAM GŁÓWNY (fuzja na ekranie)"
+echo ""
+echo " UWAGA (ESP32 po USB): zmiana grupy 'dialout' działa po WYLOGOWANIU/restarcie."
+echo "      Port USB znajdziesz:  ls /dev/ttyUSB* /dev/ttyACM*"
 echo "============================================================"
