@@ -75,6 +75,12 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   delay(100);
 
+  // Włącz wewnętrzne podciąganie linii I2C (pomaga, gdy moduł nie ma własnych
+  // rezystorów pull-up). UWAGA: to słabe (~45 kΩ) — pewniejsze są ZEWNĘTRZNE
+  // rezystory 4,7 kΩ z SDA do 3V3 i z SCL do 3V3.
+  pinMode(SDA_PIN, INPUT_PULLUP);
+  pinMode(SCL_PIN, INPUT_PULLUP);
+
   Wire.begin(SDA_PIN, SCL_PIN);     // jawne piny I2C
   Wire.setClock(I2C_CLOCK_DETEKCJA);
 

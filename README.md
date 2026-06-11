@@ -260,6 +260,9 @@ Interpretacja wyniku:
    wypisuje skan magistrali I2C. Powinien znaleźć adres **0x33**.
    - **„BRAK urzadzen I2C”** → zasilanie/piny: VIN na **3V3 (NIE 5V)**, wspólny
      GND, SDA→GPIO21, SCL→GPIO22 (nie zamienione), pewne styki.
+   - **dużo „widmowych” adresów (np. 0x60..0x7E) bez 0x33** → „pływająca”
+     magistrala: zamień SDA↔SCL, sprawdź **wspólną masę** i **3V3**, oraz dodaj
+     **rezystory pull-up 4,7 kΩ** z SDA→3V3 i SCL→3V3 (jeśli moduł ich nie ma).
    - **jest inny adres niż 0x33** → inny moduł/wariant — daj znać.
    - **inna płytka ESP32** (C3/S2/S3) ma inne piny I2C → zmień `SDA_PIN`/`SCL_PIN`
      na górze `esp32_mlx90640.ino` i wgraj ponownie.
