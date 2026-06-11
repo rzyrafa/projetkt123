@@ -75,7 +75,7 @@ class CzujnikESP32(_BazaCzujnika):
     HDR0 = 0xAA
     HDR1 = 0x55
 
-    def __init__(self, port="/dev/ttyUSB0", baud=921600, **kwargs):
+    def __init__(self, port="/dev/ttyUSB0", baud=230400, **kwargs):
         super().__init__(**kwargs)
         self.port = port
         self.baud = baud

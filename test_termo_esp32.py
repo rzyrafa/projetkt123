@@ -39,7 +39,7 @@ from termo_zrodlo import CzujnikESP32, SZER_CZUJNIKA, WYS_CZUJNIKA
 
 # --- KONFIGURACJA -----------------------------------------------------------
 PORT_ESP32 = "/dev/ttyUSB0"   # nadpisywany pierwszym argumentem wiersza poleceń
-BAUD_ESP32 = 921600
+BAUD_ESP32 = 230400           # musi zgadzać się z firmware ESP32
 PORT_WWW = 8001
 ROZMIAR_PODGLADU = (640, 480)
 PALETA = cv2.COLORMAP_INFERNO

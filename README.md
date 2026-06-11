@@ -206,7 +206,9 @@ ESP32 → kabel USB → Raspberry Pi.
 Plik: `esp32_mlx90640/esp32_mlx90640.ino`. W Arduino IDE (lub `arduino-cli`):
 - Zainstaluj bibliotekę **„Adafruit MLX90640”** (pociągnie też „Adafruit BusIO”).
 - Wybierz płytkę **„ESP32 Dev Module”** (pakiet „esp32” by Espressif).
-- Wgraj szkic. Prędkość portu w firmware: **921600** (zgodna z kodem na Pi).
+- Wgraj szkic. Prędkość portu w firmware: **230400** (`BAUD`), zgodna z kodem na
+  Pi. (230400 jest pewne na Raspberry Pi; wyższe baudy jak 921600 bywają na
+  malince niestabilne, mimo że działają w Serial Monitorze na PC.)
 
 ### 3. Znalezienie portu USB i uprawnienia (na Raspberry Pi)
 ```bash
@@ -227,7 +229,7 @@ W `kamera_termowizyjna.py` (góra pliku) ustaw:
 ```python
 ZRODLO_TERMO = "esp32"          # albo "i2c" dla bezpośredniego podłączenia
 PORT_ESP32   = "/dev/ttyUSB0"    # Twój port USB
-BAUD_ESP32   = 921600
+BAUD_ESP32   = 230400
 ```
 Reszta (tryby, fuzja, ekran) działa tak samo. Przełączenie z powrotem na I2C =
 ustawienie `ZRODLO_TERMO = "i2c"`.
@@ -241,22 +243,25 @@ suma kontrolna `uint16` (LE). Odbiór i resynchronizacja: `termo_zrodlo.py`
 Najpierw uruchom skrypt diagnostyczny — jednoznacznie pokaże, gdzie jest problem:
 ```bash
 source venv/bin/activate
-python3 diag_esp32.py                 # /dev/ttyUSB0 @ 921600
+python3 diag_esp32.py                 # /dev/ttyUSB0 @ 230400
 python3 diag_esp32.py /dev/ttyACM0     # inny port
+python3 diag_esp32.py /dev/ttyUSB0 skan  # przetestuj kilka baudów i wskaż działający
 ```
 Interpretacja wyniku:
 - **0 bajtów** → ESP32 nic nie wysyła. Sprawdź: czy firmware wgrany, dobry BAUD,
   oraz czy ESP32 wykrył czujnik (patrz dioda LED niżej).
-- **bajty są, ale błędne sumy kontrolne** → zwykle kiepski kabel USB lub baud →
-  zmień kabel; ew. obniż baud w firmware i w kodzie.
-- **ramki OK + temperatury** → link działa; po prostu zrestartuj `test_termo_esp32.py`.
+- **dane są, ale STAŁY powtarzający się wzór bez nagłówków `0xAA 0x55`** →
+  niezgodność prędkości (baud). Na Raspberry Pi używaj **230400** (po obu stronach).
+  Wyższe baudy (921600) bywają tu niestabilne. Użyj `... skan`, by znaleźć działający.
+- **bajty są, ale błędne sumy kontrolne** → kiepski kabel USB → zmień kabel/baud.
+- **ramki OK + temperatury** → link działa; zrestartuj `test_termo_esp32.py`.
 
 **Dioda LED na ESP32 (GPIO2) jako wskaźnik:**
 - **szybkie miganie** = ESP32 NIE wykrył MLX90640 → problem ESP32↔czujnik,
 - **powolne mruganie** = czujnik wykryty, ramki lecą do Pi (wszystko OK).
 
 **Gdy dioda miga szybko (czujnik niewykryty):**
-1. Otwórz **Serial Monitor** w Arduino IDE (prędkość **921600**) — firmware
+1. Otwórz **Serial Monitor** w Arduino IDE (prędkość **230400**) — firmware
    wypisuje skan magistrali I2C. Powinien znaleźć adres **0x33**.
    - **„BRAK urzadzen I2C”** → zasilanie/piny: VIN na **3V3 (NIE 5V)**, wspólny
      GND, SDA→GPIO21, SCL→GPIO22 (nie zamienione), pewne styki.
@@ -275,7 +280,7 @@ statystyki (`ramki OK=.. błędne=..`) albo ostrzeżenie o braku danych.
 - **`Nie mogę otworzyć portu`** — zły port (`ls /dev/ttyUSB* /dev/ttyACM*`) albo
   brak uprawnień (grupa `dialout` + wylogowanie/restart).
 - **Port się otwiera, ale brak ramek** — firmware niewgrany / zły `BAUD_ESP32`
-  (musi być 921600 po obu stronach) / zajęty port (zamknij Serial Monitor w
+  (musi być 230400 po obu stronach) / zajęty port (zamknij Serial Monitor w
   Arduino) / ESP32 nie widzi czujnika (sprawdź diodę LED).
 - **Obraz odwrócony** — dostrój `TERMO_LUSTRO_X` / `TERMO_LUSTRO_Y`.
 

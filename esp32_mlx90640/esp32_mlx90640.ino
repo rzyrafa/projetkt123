@@ -34,7 +34,11 @@
 #include <Adafruit_MLX90640.h>
 
 // --- KONFIGURACJA -----------------------------------------------------------
-#define BAUD            921600     // szybki port USB (musi zgadzać się z Pi)
+// Prędkość portu USB. 230400 jest PEWNE na Raspberry Pi (USB + CH340/CP2102).
+// 921600 bywa niestabilne na malince (mimo że działa w Serial Monitorze na PC) —
+// objawia się stałym, powtarzającym się „śmieciem” i brakiem nagłówków ramek.
+// 230400 z zapasem wystarcza na ~4 kl./s. Musi być TAKIE SAMO jak na Raspberry Pi.
+#define BAUD            230400
 #define I2C_CLOCK_DETEKCJA 100000  // wolniej przy wykrywaniu = pewniej
 #define I2C_CLOCK_PRACA    800000  // szybciej do odczytu ramek
 #define SDA_PIN         21         // <- zmień, jeśli Twoja płytka ma inne piny I2C

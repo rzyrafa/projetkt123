@@ -11,9 +11,10 @@ Uruchom to, gdy `test_termo_esp32.py` nie pokazuje obrazu. Skrypt:
   4. wypisuje czytelną diagnozę i co dalej zrobić.
 
 Uruchomienie:
-    python3 diag_esp32.py                      # /dev/ttyUSB0, 921600
+    python3 diag_esp32.py                      # /dev/ttyUSB0, 230400
     python3 diag_esp32.py /dev/ttyACM0          # inny port
-    python3 diag_esp32.py /dev/ttyUSB0 115200   # inny baud (do testów)
+    python3 diag_esp32.py /dev/ttyUSB0 921600   # inny baud (do testów)
+    python3 diag_esp32.py /dev/ttyUSB0 skan      # przetestuj kilka popularnych baudów
 """
 
 import sys
@@ -26,15 +27,71 @@ ROZMIAR_PAYLOAD = LICZBA_PIKSELI * 4   # 3072
 HDR0, HDR1 = 0xAA, 0x55
 
 
+def parsuj_kilka(ser, limit=15, sekundy=6):
+    """Próbuje sparsować ramki. Zwraca (ok, bad)."""
+    ok = bad = 0
+    start = time.time()
+    while ok + bad < limit and time.time() - start < sekundy:
+        b = ser.read(1)
+        if not b or b[0] != HDR0:
+            continue
+        b2 = ser.read(1)
+        if not b2 or b2[0] != HDR1:
+            continue
+        payload = ser.read(ROZMIAR_PAYLOAD)
+        if len(payload) != ROZMIAR_PAYLOAD:
+            continue
+        chk = ser.read(2)
+        if len(chk) != 2:
+            continue
+        if (sum(payload) & 0xFFFF) != (chk[0] | (chk[1] << 8)):
+            bad += 1
+            continue
+        ok += 1
+    return ok, bad
+
+
+def skanuj_baudy(serial_mod, port):
+    """Testuje kilka popularnych prędkości i mówi, która działa."""
+    print("Tryb SKAN: testuję popularne prędkości portu...\n")
+    najlepszy = None
+    for baud in (115200, 230400, 460800, 921600):
+        try:
+            ser = serial_mod.Serial(port, baud, timeout=1)
+        except Exception as e:
+            print(f"  {baud}: nie mogę otworzyć portu ({e})")
+            continue
+        time.sleep(2)  # reset ESP32 po otwarciu
+        ser.reset_input_buffer()
+        ok, bad = parsuj_kilka(ser, limit=8, sekundy=5)
+        ser.close()
+        print(f"  {baud:>7}: ramki OK={ok}, błędne={bad}")
+        if ok > 0 and najlepszy is None:
+            najlepszy = baud
+    print()
+    if najlepszy:
+        print(f">>> DZIAŁA przy baud = {najlepszy}. Ustaw TĘ SAMĄ wartość w firmware")
+        print("    (BAUD w esp32_mlx90640.ino) oraz na Pi (BAUD_ESP32 / domyślny).")
+    else:
+        print(">>> Żaden baud nie dał poprawnych ramek. Sprawdź, czy wgrany jest nasz")
+        print("    firmware i czy ESP32 wykrywa czujnik (dioda powolne mruganie).")
+
+
 def main():
     port = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
-    baud = int(sys.argv[2]) if len(sys.argv) > 2 else 921600
+    arg2 = sys.argv[2] if len(sys.argv) > 2 else None
 
     try:
         import serial
     except ImportError:
         print("BŁĄD: brak modułu 'pyserial'. Zainstaluj:  pip install pyserial")
         sys.exit(1)
+
+    if arg2 and arg2.lower().startswith("skan"):
+        skanuj_baudy(serial, port)
+        return
+
+    baud = int(arg2) if arg2 else 230400
 
     print(f"Otwieram port {port} @ {baud} ...")
     try:
