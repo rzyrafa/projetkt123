@@ -250,8 +250,12 @@ def termowizja_na_kolor(dane):
     """Macierz temperatur -> kolorowy obraz BGR w rozmiarze ekranu (+ min/max)."""
     t_min = float(dane.min())
     t_max = float(dane.max())
-    zakres = max(t_max - t_min, 1e-3)
-    znorm = np.clip((dane - t_min) / zakres * 255.0, 0, 255).astype(np.uint8)
+    # Normalizacja wg PERCENTYLI (2..98%) — odporna na pojedyncze skrajne piksele,
+    # dzięki czemu mapa cieplna ma pełny kontrast, a nie kilka kropek.
+    dolny = float(np.percentile(dane, 2))
+    gorny = float(np.percentile(dane, 98))
+    zakres = max(gorny - dolny, 1e-3)
+    znorm = np.clip((dane - dolny) / zakres * 255.0, 0, 255).astype(np.uint8)
     duzy = cv2.resize(znorm, (SZER, WYS), interpolation=cv2.INTER_CUBIC)
     kolor = cv2.applyColorMap(duzy, PALETA)        # BGR
     return kolor, t_min, t_max

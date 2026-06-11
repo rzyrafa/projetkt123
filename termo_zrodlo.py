@@ -41,7 +41,20 @@ class _BazaCzujnika:
         self._srednia = None
 
     def _aktualizuj(self, d):
-        """Przyjmuje surową macierz 24x32 (°C), nakłada orientację + EMA, zapisuje."""
+        """Przyjmuje surową macierz 24x32 (°C), czyści błędne piksele,
+        nakłada orientację + EMA, zapisuje."""
+        d = d.astype(np.float32, copy=True)
+
+        # MLX90640 czasem zwraca BŁĘDNE piksele (np. -273°C) — przy zakłóceniach
+        # I2C lub jako martwe punkty. Zastępujemy je medianą poprawnych wartości,
+        # żeby nie rozwalały skali kolorów ani wygładzania.
+        poprawne = (d > -40.0) & (d < 300.0)
+        if not poprawne.all():
+            if poprawne.any():
+                d[~poprawne] = np.median(d[poprawne])
+            else:
+                d[:] = 25.0
+
         if self.lustro_x:
             d = np.fliplr(d)
         if self.lustro_y:

@@ -141,8 +141,11 @@ def main():
 
             t_min, t_max = float(dane.min()), float(dane.max())
             t_srodek = float(dane[WYS_CZUJNIKA // 2, SZER_CZUJNIKA // 2])
-            zakres = max(t_max - t_min, 1e-3)
-            znorm = np.clip((dane - t_min) / zakres * 255.0, 0, 255).astype(np.uint8)
+            # Normalizacja wg percentyli (odporna na skrajne/błędne piksele)
+            dolny = float(np.percentile(dane, 2))
+            gorny = float(np.percentile(dane, 98))
+            zakres = max(gorny - dolny, 1e-3)
+            znorm = np.clip((dane - dolny) / zakres * 255.0, 0, 255).astype(np.uint8)
             duzy = cv2.resize(znorm, ROZMIAR_PODGLADU, interpolation=cv2.INTER_CUBIC)
             kolor = cv2.applyColorMap(duzy, PALETA)
 

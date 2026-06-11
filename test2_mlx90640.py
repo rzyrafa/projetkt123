@@ -212,6 +212,12 @@ def watek_czujnika(mlx, wyjscie):
         dane = np.array(surowa_klatka, dtype=np.float32).reshape(
             (WYS_CZUJNIKA, SZER_CZUJNIKA))
 
+        # 1a. Czyszczenie BŁĘDNYCH pikseli (np. -273°C przy zakłóceniach I2C),
+        #     żeby nie rozwalały skali kolorów.
+        poprawne = (dane > -40.0) & (dane < 300.0)
+        if not poprawne.all():
+            dane[~poprawne] = np.median(dane[poprawne]) if poprawne.any() else 25.0
+
         # Czujnik bywa montowany "do góry nogami" / lustrzanie — korekta obrazu.
         # (Dostosuj flip/rotację jeśli obraz jest odwrócony u Ciebie.)
         dane = np.fliplr(dane)
