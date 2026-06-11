@@ -33,6 +33,7 @@
 #define I2C_CLOCK       800000     // 800 kHz na magistrali I2C czujnika
 #define LICZBA_PIKSELI  (32 * 24)  // 768
 #define ROZMIAR_PAYLOAD (LICZBA_PIKSELI * 4)  // 3072 bajtów (float32)
+#define LED_PIN         2          // wbudowana dioda na wielu ESP32 DevKit (GPIO2)
 
 const uint8_t HDR0 = 0xAA;
 const uint8_t HDR1 = 0x55;
@@ -42,15 +43,20 @@ float ramka[LICZBA_PIKSELI];
 
 void setup() {
   Serial.begin(BAUD);
+  pinMode(LED_PIN, OUTPUT);
   delay(100);
 
   Wire.begin();                 // SDA=GPIO21, SCL=GPIO22 (domyślne)
   Wire.setClock(I2C_CLOCK);
 
-  // Inicjalizacja czujnika — w razie braku ponawiaj (czujnik mógł nie wstać)
+  // Inicjalizacja czujnika — w razie braku ponawiaj (czujnik mógł nie wstać).
+  // SYGNALIZACJA: gdy czujnik NIE jest wykryty, dioda miga SZYBKO. Jeśli widzisz
+  // szybkie miganie, problem jest na linii ESP32<->MLX90640 (piny/zasilanie).
   while (!mlx.begin(MLX90640_I2CADDR_DEFAULT, &Wire)) {
-    delay(500);
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    delay(100);
   }
+  digitalWrite(LED_PIN, LOW);
 
   // Tryb i parametry: chess (mniej pasków) + 18-bit + 8 Hz (stabilne przez USB)
   mlx.setMode(MLX90640_CHESS);
@@ -77,4 +83,8 @@ void loop() {
   Serial.write(bajty, ROZMIAR_PAYLOAD);
   Serial.write((uint8_t)(suma & 0xFF));
   Serial.write((uint8_t)((suma >> 8) & 0xFF));
+
+  // SYGNALIZACJA: dioda zmienia stan przy każdej wysłanej ramce (powolne
+  // "mruganie" = wszystko działa, czujnik wykryty i dane lecą do Pi).
+  digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 }

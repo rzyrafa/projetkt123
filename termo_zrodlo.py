@@ -80,18 +80,12 @@ class CzujnikESP32(_BazaCzujnika):
         self.port = port
         self.baud = baud
 
-    def _zsynchronizuj(self, ser):
-        """Szuka nagłówka 0xAA 0x55 w strumieniu. Zwraca True, gdy znaleziono."""
-        b = ser.read(1)
-        if not b or b[0] != self.HDR0:
-            return False
-        b2 = ser.read(1)
-        if not b2 or b2[0] != self.HDR1:
-            return False
-        return True
-
     def _petla(self):
-        import serial  # pyserial (instalowane przez pip: pyserial)
+        try:
+            import serial  # pyserial
+        except ImportError:
+            logging.error("Brak modułu 'pyserial'. Zainstaluj:  pip install pyserial")
+            return
 
         while True:
             try:
@@ -103,23 +97,47 @@ class CzujnikESP32(_BazaCzujnika):
                 continue
 
             logging.info("Połączono z ESP32 na %s @ %d", self.port, self.baud)
+            ok = 0
+            bad = 0
+            ostatni_log = time.monotonic()
             try:
                 while True:
-                    if not self._zsynchronizuj(ser):
+                    # --- statystyki / diagnostyka co ~3 s ---
+                    teraz = time.monotonic()
+                    if teraz - ostatni_log >= 3.0:
+                        if ok == 0 and bad == 0:
+                            logging.warning(
+                                "ESP32: brak danych z portu (0 ramek/3s). "
+                                "Sprawdź firmware/baud/port (uruchom diag_esp32.py).")
+                        else:
+                            logging.info("ESP32: ramki OK=%d, błędne(suma)=%d /3s",
+                                         ok, bad)
+                        ok = bad = 0
+                        ostatni_log = teraz
+
+                    # --- szukanie nagłówka 0xAA 0x55 ---
+                    b = ser.read(1)
+                    if not b or b[0] != self.HDR0:
                         continue
+                    b2 = ser.read(1)
+                    if not b2 or b2[0] != self.HDR1:
+                        continue
+
+                    # --- odbiór ramki + suma kontrolna ---
                     payload = ser.read(ROZMIAR_PAYLOAD)
                     if len(payload) != ROZMIAR_PAYLOAD:
                         continue
                     chk = ser.read(2)
                     if len(chk) != 2:
                         continue
-                    suma_obl = sum(payload) & 0xFFFF
-                    suma_odb = chk[0] | (chk[1] << 8)
-                    if suma_obl != suma_odb:
+                    if (sum(payload) & 0xFFFF) != (chk[0] | (chk[1] << 8)):
+                        bad += 1
                         continue   # uszkodzona ramka — pomiń i resynchronizuj
+
                     d = np.frombuffer(payload, dtype="<f4").reshape(
                         (WYS_CZUJNIKA, SZER_CZUJNIKA)).astype(np.float32)
                     self._aktualizuj(d)
+                    ok += 1
             except Exception as e:
                 logging.warning("Błąd portu szeregowego: %s. Ponawiam połączenie...", e)
                 try:

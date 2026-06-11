@@ -237,12 +237,34 @@ ESP32 wysyła ramki binarnie: `[0xAA][0x55]` + 768 × `float32` (LE, 3072 B) +
 suma kontrolna `uint16` (LE). Odbiór i resynchronizacja: `termo_zrodlo.py`
 (klasa `CzujnikESP32`). Uszkodzone ramki są odrzucane po sumie kontrolnej.
 
+### Diagnostyka, gdy strona nie pokazuje obrazu z ESP32
+Najpierw uruchom skrypt diagnostyczny — jednoznacznie pokaże, gdzie jest problem:
+```bash
+source venv/bin/activate
+python3 diag_esp32.py                 # /dev/ttyUSB0 @ 921600
+python3 diag_esp32.py /dev/ttyACM0     # inny port
+```
+Interpretacja wyniku:
+- **0 bajtów** → ESP32 nic nie wysyła. Sprawdź: czy firmware wgrany, dobry BAUD,
+  oraz czy ESP32 wykrył czujnik (patrz dioda LED niżej).
+- **bajty są, ale błędne sumy kontrolne** → zwykle kiepski kabel USB lub baud →
+  zmień kabel; ew. obniż baud w firmware i w kodzie.
+- **ramki OK + temperatury** → link działa; po prostu zrestartuj `test_termo_esp32.py`.
+
+**Dioda LED na ESP32 (GPIO2) jako wskaźnik:**
+- **szybkie miganie** = ESP32 NIE wykrył MLX90640 → problem ESP32↔czujnik
+  (zasilanie 3V3, piny SDA=GPIO21, SCL=GPIO22, masa),
+- **powolne mruganie** = czujnik wykryty, ramki lecą do Pi (wszystko OK).
+
+Dodatkowo `test_termo_esp32.py` / program główny wypisują w terminalu co 3 s
+statystyki (`ramki OK=.. błędne=..`) albo ostrzeżenie o braku danych.
+
 ### Najczęstsze problemy (ESP32)
-- **`Nie mogę otworzyć portu`** — zły port (sprawdź `ls /dev/ttyUSB* /dev/ttyACM*`)
-  albo brak uprawnień (grupa `dialout` + wylogowanie/restart).
-- **Brak obrazu, port się otwiera** — sprawdź, czy firmware jest wgrany i czy
-  `BAUD_ESP32` = 921600 po obu stronach. Zajęty port (np. otwarty Serial Monitor
-  w Arduino) też zablokuje odczyt.
+- **`Nie mogę otworzyć portu`** — zły port (`ls /dev/ttyUSB* /dev/ttyACM*`) albo
+  brak uprawnień (grupa `dialout` + wylogowanie/restart).
+- **Port się otwiera, ale brak ramek** — firmware niewgrany / zły `BAUD_ESP32`
+  (musi być 921600 po obu stronach) / zajęty port (zamknij Serial Monitor w
+  Arduino) / ESP32 nie widzi czujnika (sprawdź diodę LED).
 - **Obraz odwrócony** — dostrój `TERMO_LUSTRO_X` / `TERMO_LUSTRO_Y`.
 
 ---
